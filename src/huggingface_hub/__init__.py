@@ -46,7 +46,7 @@ import sys
 from typing import TYPE_CHECKING
 
 
-__version__ = "0.22.0.dev0"
+__version__ = "0.26.0.dev0"
 
 # Alphabetical order of definitions is ensured in tests
 # WARNING: any comment added in this dictionary definition will be lost when
@@ -63,6 +63,8 @@ _SUBMOD_ATTRS = {
         "InferenceEndpointType",
     ],
     "_login": [
+        "auth_list",
+        "auth_switch",
         "interpreter_login",
         "login",
         "logout",
@@ -129,7 +131,6 @@ _SUBMOD_ATTRS = {
     "file_download": [
         "HfFileMetadata",
         "_CACHED_NO_EXIST",
-        "cached_download",
         "get_hf_file_metadata",
         "hf_hub_download",
         "hf_hub_url",
@@ -143,17 +144,23 @@ _SUBMOD_ATTRS = {
         "CommitOperationAdd",
         "CommitOperationCopy",
         "CommitOperationDelete",
+        "DatasetInfo",
         "GitCommitInfo",
         "GitRefInfo",
         "GitRefs",
         "HfApi",
+        "ModelInfo",
         "RepoUrl",
+        "SpaceInfo",
         "User",
         "UserLikes",
+        "WebhookInfo",
+        "WebhookWatchedItem",
         "accept_access_request",
         "add_collection_item",
         "add_space_secret",
         "add_space_variable",
+        "auth_check",
         "cancel_access_request",
         "change_discussion_status",
         "comment_discussion",
@@ -166,6 +173,7 @@ _SUBMOD_ATTRS = {
         "create_pull_request",
         "create_repo",
         "create_tag",
+        "create_webhook",
         "dataset_info",
         "delete_branch",
         "delete_collection",
@@ -178,8 +186,11 @@ _SUBMOD_ATTRS = {
         "delete_space_storage",
         "delete_space_variable",
         "delete_tag",
+        "delete_webhook",
+        "disable_webhook",
         "duplicate_space",
         "edit_discussion_comment",
+        "enable_webhook",
         "file_exists",
         "get_collection",
         "get_dataset_tags",
@@ -193,16 +204,18 @@ _SUBMOD_ATTRS = {
         "get_space_runtime",
         "get_space_variables",
         "get_token_permission",
+        "get_user_overview",
+        "get_webhook",
         "grant_access",
         "like",
         "list_accepted_access_requests",
         "list_collections",
         "list_datasets",
-        "list_files_info",
         "list_inference_endpoints",
         "list_liked_repos",
         "list_metrics",
         "list_models",
+        "list_organization_members",
         "list_pending_access_requests",
         "list_rejected_access_requests",
         "list_repo_commits",
@@ -211,6 +224,9 @@ _SUBMOD_ATTRS = {
         "list_repo_refs",
         "list_repo_tree",
         "list_spaces",
+        "list_user_followers",
+        "list_user_following",
+        "list_webhooks",
         "merge_pull_request",
         "model_info",
         "move_repo",
@@ -237,9 +253,12 @@ _SUBMOD_ATTRS = {
         "update_collection_item",
         "update_collection_metadata",
         "update_inference_endpoint",
+        "update_repo_settings",
         "update_repo_visibility",
+        "update_webhook",
         "upload_file",
         "upload_folder",
+        "upload_large_folder",
         "whoami",
     ],
     "hf_file_system": [
@@ -271,13 +290,32 @@ _SUBMOD_ATTRS = {
         "AutomaticSpeechRecognitionOutputChunk",
         "AutomaticSpeechRecognitionParameters",
         "ChatCompletionInput",
+        "ChatCompletionInputFunctionDefinition",
+        "ChatCompletionInputFunctionName",
+        "ChatCompletionInputGrammarType",
         "ChatCompletionInputMessage",
+        "ChatCompletionInputMessageChunk",
+        "ChatCompletionInputStreamOptions",
+        "ChatCompletionInputToolType",
+        "ChatCompletionInputURL",
         "ChatCompletionOutput",
-        "ChatCompletionOutputChoice",
-        "ChatCompletionOutputChoiceMessage",
+        "ChatCompletionOutputComplete",
+        "ChatCompletionOutputFunctionDefinition",
+        "ChatCompletionOutputLogprob",
+        "ChatCompletionOutputLogprobs",
+        "ChatCompletionOutputMessage",
+        "ChatCompletionOutputToolCall",
+        "ChatCompletionOutputTopLogprob",
+        "ChatCompletionOutputUsage",
         "ChatCompletionStreamOutput",
         "ChatCompletionStreamOutputChoice",
         "ChatCompletionStreamOutputDelta",
+        "ChatCompletionStreamOutputDeltaToolCall",
+        "ChatCompletionStreamOutputFunction",
+        "ChatCompletionStreamOutputLogprob",
+        "ChatCompletionStreamOutputLogprobs",
+        "ChatCompletionStreamOutputTopLogprob",
+        "ChatCompletionStreamOutputUsage",
         "DepthEstimationInput",
         "DepthEstimationOutput",
         "DocumentQuestionAnsweringInput",
@@ -312,9 +350,9 @@ _SUBMOD_ATTRS = {
         "QuestionAnsweringParameters",
         "SentenceSimilarityInput",
         "SentenceSimilarityInputData",
-        "SummarizationGenerationParameters",
         "SummarizationInput",
         "SummarizationOutput",
+        "SummarizationParameters",
         "TableQuestionAnsweringInput",
         "TableQuestionAnsweringInputData",
         "TableQuestionAnsweringOutputElement",
@@ -325,14 +363,16 @@ _SUBMOD_ATTRS = {
         "TextClassificationOutputElement",
         "TextClassificationParameters",
         "TextGenerationInput",
+        "TextGenerationInputGenerateParameters",
+        "TextGenerationInputGrammarType",
         "TextGenerationOutput",
+        "TextGenerationOutputBestOfSequence",
         "TextGenerationOutputDetails",
-        "TextGenerationOutputSequenceDetails",
+        "TextGenerationOutputPrefillToken",
         "TextGenerationOutputToken",
-        "TextGenerationParameters",
-        "TextGenerationPrefillToken",
-        "TextGenerationStreamDetails",
         "TextGenerationStreamOutput",
+        "TextGenerationStreamOutputStreamDetails",
+        "TextGenerationStreamOutputToken",
         "TextToAudioGenerationParameters",
         "TextToAudioInput",
         "TextToAudioOutput",
@@ -341,12 +381,17 @@ _SUBMOD_ATTRS = {
         "TextToImageOutput",
         "TextToImageParameters",
         "TextToImageTargetSize",
+        "TextToSpeechGenerationParameters",
+        "TextToSpeechInput",
+        "TextToSpeechOutput",
+        "TextToSpeechParameters",
         "TokenClassificationInput",
         "TokenClassificationOutputElement",
         "TokenClassificationParameters",
-        "TranslationGenerationParameters",
+        "ToolElement",
         "TranslationInput",
         "TranslationOutput",
+        "TranslationParameters",
         "VideoClassificationInput",
         "VideoClassificationOutputElement",
         "VideoClassificationParameters",
@@ -398,7 +443,11 @@ _SUBMOD_ATTRS = {
     ],
     "serialization": [
         "StateDictSplit",
-        "split_numpy_state_dict_into_shards",
+        "get_tf_storage_size",
+        "get_torch_storage_id",
+        "get_torch_storage_size",
+        "save_torch_model",
+        "save_torch_state_dict",
         "split_state_dict_into_shards_factory",
         "split_tf_state_dict_into_shards",
         "split_torch_state_dict_into_shards",
@@ -419,10 +468,6 @@ _SUBMOD_ATTRS = {
         "get_token",
         "logging",
         "scan_cache_dir",
-    ],
-    "utils.endpoint_helpers": [
-        "DatasetFilter",
-        "ModelFilter",
     ],
 }
 
@@ -481,10 +526,18 @@ def _attach(package_name, submodules=None, submod_attrs=None):
 
     def __getattr__(name):
         if name in submodules:
-            return importlib.import_module(f"{package_name}.{name}")
+            try:
+                return importlib.import_module(f"{package_name}.{name}")
+            except Exception as e:
+                print(f"Error importing {package_name}.{name}: {e}")
+                raise
         elif name in attr_to_modules:
             submod_path = f"{package_name}.{attr_to_modules[name]}"
-            submod = importlib.import_module(submod_path)
+            try:
+                submod = importlib.import_module(submod_path)
+            except Exception as e:
+                print(f"Error importing {submod_path}: {e}")
+                raise
             attr = getattr(submod, name)
 
             # If the attribute lives in a file (module) with the same
@@ -501,14 +554,14 @@ def _attach(package_name, submodules=None, submod_attrs=None):
     def __dir__():
         return __all__
 
-    if os.environ.get("EAGER_IMPORT", ""):
-        for attr in set(attr_to_modules.keys()) | submodules:
-            __getattr__(attr)
-
     return __getattr__, __dir__, list(__all__)
 
 
 __getattr__, __dir__, __all__ = _attach(__name__, submodules=[], submod_attrs=_SUBMOD_ATTRS)
+
+if os.environ.get("EAGER_IMPORT", ""):
+    for attr in __all__:
+        __getattr__(attr)
 
 # WARNING: any content below this statement is generated automatically. Any manual edit
 # will be lost when re-generating this file !
@@ -531,6 +584,8 @@ if TYPE_CHECKING:  # pragma: no cover
         InferenceEndpointType,  # noqa: F401
     )
     from ._login import (
+        auth_list,  # noqa: F401
+        auth_switch,  # noqa: F401
         interpreter_login,  # noqa: F401
         login,  # noqa: F401
         logout,  # noqa: F401
@@ -593,7 +648,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from .file_download import (
         _CACHED_NO_EXIST,  # noqa: F401
         HfFileMetadata,  # noqa: F401
-        cached_download,  # noqa: F401
         get_hf_file_metadata,  # noqa: F401
         hf_hub_download,  # noqa: F401
         hf_hub_url,  # noqa: F401
@@ -607,17 +661,23 @@ if TYPE_CHECKING:  # pragma: no cover
         CommitOperationAdd,  # noqa: F401
         CommitOperationCopy,  # noqa: F401
         CommitOperationDelete,  # noqa: F401
+        DatasetInfo,  # noqa: F401
         GitCommitInfo,  # noqa: F401
         GitRefInfo,  # noqa: F401
         GitRefs,  # noqa: F401
         HfApi,  # noqa: F401
+        ModelInfo,  # noqa: F401
         RepoUrl,  # noqa: F401
+        SpaceInfo,  # noqa: F401
         User,  # noqa: F401
         UserLikes,  # noqa: F401
+        WebhookInfo,  # noqa: F401
+        WebhookWatchedItem,  # noqa: F401
         accept_access_request,  # noqa: F401
         add_collection_item,  # noqa: F401
         add_space_secret,  # noqa: F401
         add_space_variable,  # noqa: F401
+        auth_check,  # noqa: F401
         cancel_access_request,  # noqa: F401
         change_discussion_status,  # noqa: F401
         comment_discussion,  # noqa: F401
@@ -630,6 +690,7 @@ if TYPE_CHECKING:  # pragma: no cover
         create_pull_request,  # noqa: F401
         create_repo,  # noqa: F401
         create_tag,  # noqa: F401
+        create_webhook,  # noqa: F401
         dataset_info,  # noqa: F401
         delete_branch,  # noqa: F401
         delete_collection,  # noqa: F401
@@ -642,8 +703,11 @@ if TYPE_CHECKING:  # pragma: no cover
         delete_space_storage,  # noqa: F401
         delete_space_variable,  # noqa: F401
         delete_tag,  # noqa: F401
+        delete_webhook,  # noqa: F401
+        disable_webhook,  # noqa: F401
         duplicate_space,  # noqa: F401
         edit_discussion_comment,  # noqa: F401
+        enable_webhook,  # noqa: F401
         file_exists,  # noqa: F401
         get_collection,  # noqa: F401
         get_dataset_tags,  # noqa: F401
@@ -657,16 +721,18 @@ if TYPE_CHECKING:  # pragma: no cover
         get_space_runtime,  # noqa: F401
         get_space_variables,  # noqa: F401
         get_token_permission,  # noqa: F401
+        get_user_overview,  # noqa: F401
+        get_webhook,  # noqa: F401
         grant_access,  # noqa: F401
         like,  # noqa: F401
         list_accepted_access_requests,  # noqa: F401
         list_collections,  # noqa: F401
         list_datasets,  # noqa: F401
-        list_files_info,  # noqa: F401
         list_inference_endpoints,  # noqa: F401
         list_liked_repos,  # noqa: F401
         list_metrics,  # noqa: F401
         list_models,  # noqa: F401
+        list_organization_members,  # noqa: F401
         list_pending_access_requests,  # noqa: F401
         list_rejected_access_requests,  # noqa: F401
         list_repo_commits,  # noqa: F401
@@ -675,6 +741,9 @@ if TYPE_CHECKING:  # pragma: no cover
         list_repo_refs,  # noqa: F401
         list_repo_tree,  # noqa: F401
         list_spaces,  # noqa: F401
+        list_user_followers,  # noqa: F401
+        list_user_following,  # noqa: F401
+        list_webhooks,  # noqa: F401
         merge_pull_request,  # noqa: F401
         model_info,  # noqa: F401
         move_repo,  # noqa: F401
@@ -701,9 +770,12 @@ if TYPE_CHECKING:  # pragma: no cover
         update_collection_item,  # noqa: F401
         update_collection_metadata,  # noqa: F401
         update_inference_endpoint,  # noqa: F401
+        update_repo_settings,  # noqa: F401
         update_repo_visibility,  # noqa: F401
+        update_webhook,  # noqa: F401
         upload_file,  # noqa: F401
         upload_folder,  # noqa: F401
+        upload_large_folder,  # noqa: F401
         whoami,  # noqa: F401
     )
     from .hf_file_system import (
@@ -733,13 +805,32 @@ if TYPE_CHECKING:  # pragma: no cover
         AutomaticSpeechRecognitionOutputChunk,  # noqa: F401
         AutomaticSpeechRecognitionParameters,  # noqa: F401
         ChatCompletionInput,  # noqa: F401
+        ChatCompletionInputFunctionDefinition,  # noqa: F401
+        ChatCompletionInputFunctionName,  # noqa: F401
+        ChatCompletionInputGrammarType,  # noqa: F401
         ChatCompletionInputMessage,  # noqa: F401
+        ChatCompletionInputMessageChunk,  # noqa: F401
+        ChatCompletionInputStreamOptions,  # noqa: F401
+        ChatCompletionInputToolType,  # noqa: F401
+        ChatCompletionInputURL,  # noqa: F401
         ChatCompletionOutput,  # noqa: F401
-        ChatCompletionOutputChoice,  # noqa: F401
-        ChatCompletionOutputChoiceMessage,  # noqa: F401
+        ChatCompletionOutputComplete,  # noqa: F401
+        ChatCompletionOutputFunctionDefinition,  # noqa: F401
+        ChatCompletionOutputLogprob,  # noqa: F401
+        ChatCompletionOutputLogprobs,  # noqa: F401
+        ChatCompletionOutputMessage,  # noqa: F401
+        ChatCompletionOutputToolCall,  # noqa: F401
+        ChatCompletionOutputTopLogprob,  # noqa: F401
+        ChatCompletionOutputUsage,  # noqa: F401
         ChatCompletionStreamOutput,  # noqa: F401
         ChatCompletionStreamOutputChoice,  # noqa: F401
         ChatCompletionStreamOutputDelta,  # noqa: F401
+        ChatCompletionStreamOutputDeltaToolCall,  # noqa: F401
+        ChatCompletionStreamOutputFunction,  # noqa: F401
+        ChatCompletionStreamOutputLogprob,  # noqa: F401
+        ChatCompletionStreamOutputLogprobs,  # noqa: F401
+        ChatCompletionStreamOutputTopLogprob,  # noqa: F401
+        ChatCompletionStreamOutputUsage,  # noqa: F401
         DepthEstimationInput,  # noqa: F401
         DepthEstimationOutput,  # noqa: F401
         DocumentQuestionAnsweringInput,  # noqa: F401
@@ -774,9 +865,9 @@ if TYPE_CHECKING:  # pragma: no cover
         QuestionAnsweringParameters,  # noqa: F401
         SentenceSimilarityInput,  # noqa: F401
         SentenceSimilarityInputData,  # noqa: F401
-        SummarizationGenerationParameters,  # noqa: F401
         SummarizationInput,  # noqa: F401
         SummarizationOutput,  # noqa: F401
+        SummarizationParameters,  # noqa: F401
         TableQuestionAnsweringInput,  # noqa: F401
         TableQuestionAnsweringInputData,  # noqa: F401
         TableQuestionAnsweringOutputElement,  # noqa: F401
@@ -787,14 +878,16 @@ if TYPE_CHECKING:  # pragma: no cover
         TextClassificationOutputElement,  # noqa: F401
         TextClassificationParameters,  # noqa: F401
         TextGenerationInput,  # noqa: F401
+        TextGenerationInputGenerateParameters,  # noqa: F401
+        TextGenerationInputGrammarType,  # noqa: F401
         TextGenerationOutput,  # noqa: F401
+        TextGenerationOutputBestOfSequence,  # noqa: F401
         TextGenerationOutputDetails,  # noqa: F401
-        TextGenerationOutputSequenceDetails,  # noqa: F401
+        TextGenerationOutputPrefillToken,  # noqa: F401
         TextGenerationOutputToken,  # noqa: F401
-        TextGenerationParameters,  # noqa: F401
-        TextGenerationPrefillToken,  # noqa: F401
-        TextGenerationStreamDetails,  # noqa: F401
         TextGenerationStreamOutput,  # noqa: F401
+        TextGenerationStreamOutputStreamDetails,  # noqa: F401
+        TextGenerationStreamOutputToken,  # noqa: F401
         TextToAudioGenerationParameters,  # noqa: F401
         TextToAudioInput,  # noqa: F401
         TextToAudioOutput,  # noqa: F401
@@ -803,12 +896,17 @@ if TYPE_CHECKING:  # pragma: no cover
         TextToImageOutput,  # noqa: F401
         TextToImageParameters,  # noqa: F401
         TextToImageTargetSize,  # noqa: F401
+        TextToSpeechGenerationParameters,  # noqa: F401
+        TextToSpeechInput,  # noqa: F401
+        TextToSpeechOutput,  # noqa: F401
+        TextToSpeechParameters,  # noqa: F401
         TokenClassificationInput,  # noqa: F401
         TokenClassificationOutputElement,  # noqa: F401
         TokenClassificationParameters,  # noqa: F401
-        TranslationGenerationParameters,  # noqa: F401
+        ToolElement,  # noqa: F401
         TranslationInput,  # noqa: F401
         TranslationOutput,  # noqa: F401
+        TranslationParameters,  # noqa: F401
         VideoClassificationInput,  # noqa: F401
         VideoClassificationOutputElement,  # noqa: F401
         VideoClassificationParameters,  # noqa: F401
@@ -856,7 +954,11 @@ if TYPE_CHECKING:  # pragma: no cover
     from .repository import Repository  # noqa: F401
     from .serialization import (
         StateDictSplit,  # noqa: F401
-        split_numpy_state_dict_into_shards,  # noqa: F401
+        get_tf_storage_size,  # noqa: F401
+        get_torch_storage_id,  # noqa: F401
+        get_torch_storage_size,  # noqa: F401
+        save_torch_model,  # noqa: F401
+        save_torch_state_dict,  # noqa: F401
         split_state_dict_into_shards_factory,  # noqa: F401
         split_tf_state_dict_into_shards,  # noqa: F401
         split_torch_state_dict_into_shards,  # noqa: F401
@@ -877,8 +979,4 @@ if TYPE_CHECKING:  # pragma: no cover
         get_token,  # noqa: F401
         logging,  # noqa: F401
         scan_cache_dir,  # noqa: F401
-    )
-    from .utils.endpoint_helpers import (
-        DatasetFilter,  # noqa: F401
-        ModelFilter,  # noqa: F401
     )

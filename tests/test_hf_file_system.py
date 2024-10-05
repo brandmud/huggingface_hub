@@ -1,3 +1,4 @@
+import copy
 import datetime
 import io
 import os
@@ -11,8 +12,8 @@ import fsspec
 import pytest
 
 from huggingface_hub import hf_file_system
+from huggingface_hub.errors import RepositoryNotFoundError, RevisionNotFoundError
 from huggingface_hub.hf_file_system import HfFileSystem, HfFileSystemFile, HfFileSystemStreamFile
-from huggingface_hub.utils import RepositoryNotFoundError, RevisionNotFoundError
 
 from .testing_constants import ENDPOINT_STAGING, TOKEN
 from .testing_utils import repo_name
@@ -391,7 +392,10 @@ class HfFileSystemTests(unittest.TestCase):
             repo_type="dataset",
         )
 
-        files = self.hffs.find(self.hf_path, detail=True)
+        # Copy the result to make it robust to the cache modifications
+        # See discussion in https://github.com/huggingface/huggingface_hub/pull/2103
+        # for info on why this is not done in `HfFileSystem.find` by default
+        files = copy.deepcopy(self.hffs.find(self.hf_path, detail=True))
 
         # some directories not in cache
         self.hffs.dircache.pop(self.hf_path + "/data/sub_data")

@@ -56,9 +56,9 @@ def check_static_imports(update: bool) -> NoReturn:
         "_SUBMOD_ATTRS = {\n"
         + "\n".join(
             f'    "{module}": [\n'
-            + "\n".join(f'        "{attr}",' for attr in sorted(_SUBMOD_ATTRS[module]))
+            + "\n".join(f'        "{attr}",' for attr in sorted(set(_SUBMOD_ATTRS[module])))
             + "\n    ],"
-            for module in sorted(_SUBMOD_ATTRS.keys())
+            for module in sorted(set(_SUBMOD_ATTRS.keys()))
         )
         + "\n}"
     )
@@ -80,7 +80,7 @@ def check_static_imports(update: bool) -> NoReturn:
             reordered_content_before_static_checks + IF_TYPE_CHECKING_LINE + "\n".join(static_imports) + "\n"
         )
         ruff_bin = find_ruff_bin()
-        os.spawnv(os.P_WAIT, ruff_bin, ["ruff", str(filepath), "--fix", "--quiet"])
+        os.spawnv(os.P_WAIT, ruff_bin, ["ruff", "check", str(filepath), "--fix", "--quiet"])
         os.spawnv(os.P_WAIT, ruff_bin, ["ruff", "format", str(filepath), "--quiet"])
         expected_init_content = filepath.read_text()
 

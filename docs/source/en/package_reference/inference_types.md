@@ -53,19 +53,59 @@ This part of the lib is still under development and will be improved in future r
 
 [[autodoc]] huggingface_hub.ChatCompletionInput
 
+[[autodoc]] huggingface_hub.ChatCompletionInputFunctionDefinition
+
+[[autodoc]] huggingface_hub.ChatCompletionInputFunctionName
+
+[[autodoc]] huggingface_hub.ChatCompletionInputGrammarType
+
 [[autodoc]] huggingface_hub.ChatCompletionInputMessage
+
+[[autodoc]] huggingface_hub.ChatCompletionInputMessageChunk
+
+[[autodoc]] huggingface_hub.ChatCompletionInputStreamOptions
+
+[[autodoc]] huggingface_hub.ChatCompletionInputToolType
+
+[[autodoc]] huggingface_hub.ChatCompletionInputURL
 
 [[autodoc]] huggingface_hub.ChatCompletionOutput
 
-[[autodoc]] huggingface_hub.ChatCompletionOutputChoice
+[[autodoc]] huggingface_hub.ChatCompletionOutputComplete
 
-[[autodoc]] huggingface_hub.ChatCompletionOutputChoiceMessage
+[[autodoc]] huggingface_hub.ChatCompletionOutputFunctionDefinition
+
+[[autodoc]] huggingface_hub.ChatCompletionOutputLogprob
+
+[[autodoc]] huggingface_hub.ChatCompletionOutputLogprobs
+
+[[autodoc]] huggingface_hub.ChatCompletionOutputMessage
+
+[[autodoc]] huggingface_hub.ChatCompletionOutputToolCall
+
+[[autodoc]] huggingface_hub.ChatCompletionOutputTopLogprob
+
+[[autodoc]] huggingface_hub.ChatCompletionOutputUsage
 
 [[autodoc]] huggingface_hub.ChatCompletionStreamOutput
 
 [[autodoc]] huggingface_hub.ChatCompletionStreamOutputChoice
 
 [[autodoc]] huggingface_hub.ChatCompletionStreamOutputDelta
+
+[[autodoc]] huggingface_hub.ChatCompletionStreamOutputDeltaToolCall
+
+[[autodoc]] huggingface_hub.ChatCompletionStreamOutputFunction
+
+[[autodoc]] huggingface_hub.ChatCompletionStreamOutputLogprob
+
+[[autodoc]] huggingface_hub.ChatCompletionStreamOutputLogprobs
+
+[[autodoc]] huggingface_hub.ChatCompletionStreamOutputTopLogprob
+
+[[autodoc]] huggingface_hub.ChatCompletionStreamOutputUsage
+
+[[autodoc]] huggingface_hub.ToolElement
 
 
 
@@ -183,11 +223,11 @@ This part of the lib is still under development and will be improved in future r
 
 ## summarization
 
-[[autodoc]] huggingface_hub.SummarizationGenerationParameters
-
 [[autodoc]] huggingface_hub.SummarizationInput
 
 [[autodoc]] huggingface_hub.SummarizationOutput
+
+[[autodoc]] huggingface_hub.SummarizationParameters
 
 
 
@@ -225,21 +265,25 @@ This part of the lib is still under development and will be improved in future r
 
 [[autodoc]] huggingface_hub.TextGenerationInput
 
+[[autodoc]] huggingface_hub.TextGenerationInputGenerateParameters
+
+[[autodoc]] huggingface_hub.TextGenerationInputGrammarType
+
 [[autodoc]] huggingface_hub.TextGenerationOutput
+
+[[autodoc]] huggingface_hub.TextGenerationOutputBestOfSequence
 
 [[autodoc]] huggingface_hub.TextGenerationOutputDetails
 
-[[autodoc]] huggingface_hub.TextGenerationOutputSequenceDetails
+[[autodoc]] huggingface_hub.TextGenerationOutputPrefillToken
 
 [[autodoc]] huggingface_hub.TextGenerationOutputToken
 
-[[autodoc]] huggingface_hub.TextGenerationParameters
-
-[[autodoc]] huggingface_hub.TextGenerationPrefillToken
-
-[[autodoc]] huggingface_hub.TextGenerationStreamDetails
-
 [[autodoc]] huggingface_hub.TextGenerationStreamOutput
+
+[[autodoc]] huggingface_hub.TextGenerationStreamOutputStreamDetails
+
+[[autodoc]] huggingface_hub.TextGenerationStreamOutputToken
 
 
 
@@ -267,6 +311,18 @@ This part of the lib is still under development and will be improved in future r
 
 
 
+## text_to_speech
+
+[[autodoc]] huggingface_hub.TextToSpeechGenerationParameters
+
+[[autodoc]] huggingface_hub.TextToSpeechInput
+
+[[autodoc]] huggingface_hub.TextToSpeechOutput
+
+[[autodoc]] huggingface_hub.TextToSpeechParameters
+
+
+
 ## token_classification
 
 [[autodoc]] huggingface_hub.TokenClassificationInput
@@ -279,11 +335,11 @@ This part of the lib is still under development and will be improved in future r
 
 ## translation
 
-[[autodoc]] huggingface_hub.TranslationGenerationParameters
-
 [[autodoc]] huggingface_hub.TranslationInput
 
 [[autodoc]] huggingface_hub.TranslationOutput
+
+[[autodoc]] huggingface_hub.TranslationParameters
 
 
 

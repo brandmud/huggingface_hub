@@ -15,6 +15,9 @@ on:
 jobs:
   build-ubuntu:
     runs-on: ubuntu-latest
+    env:
+      UV_HTTP_TIMEOUT: 600 # max 10min to install deps
+
     strategy:
       fail-fast: false
       matrix:
@@ -23,7 +26,8 @@ jobs:
           [
             "Repository only",
             "Everything else",
-            "torch",
+            "torch_1.11",
+            "torch_latest",
           ]
         include:
           - python-version: "3.11" # LFS not ran on 3.8
@@ -68,8 +72,18 @@ jobs:
               git config --global user.name "ci"
               ;;
 
-            fastai | torch)
-              uv pip install "huggingface_hub[${{ matrix.test_name }}] @ ."
+            fastai)
+              uv pip install "huggingface_hub[fastai] @ ."
+              ;;
+
+            torch_latest)
+              uv pip install "huggingface_hub[torch] @ ."
+              uv pip install --upgrade torch
+              ;;
+
+            torch_1.11)
+              uv pip install "huggingface_hub[torch] @ ."
+              uv pip install torch~=1.11
               ;;
 
             tensorflow)
@@ -85,7 +99,7 @@ jobs:
         working-directory: ./src # For code coverage to work
         run: |
           source ../.venv/bin/activate
-          PYTEST="python -m pytest --cov=./huggingface_hub --cov-report=xml:../coverage.xml --vcr-record=none --reruns 5 --reruns-delay 1 --only-rerun '(OSError|Timeout|HTTPError.*502|HTTPError.*504||not less than or equal to 0.01)'"
+          PYTEST="python -m pytest --cov=./huggingface_hub --cov-report=xml:../coverage.xml --vcr-record=none --reruns 8 --reruns-delay 2 --only-rerun '(OSError|Timeout|HTTPError.*502|HTTPError.*504||not less than or equal to 0.01)'"
 
           case "${{ matrix.test_name }}" in
 
@@ -118,7 +132,7 @@ jobs:
               eval "$PYTEST ../tests/test_serialization.py"
             ;;
 
-            torch)
+            torch_1.11 | torch_latest)
             eval "$PYTEST ../tests/test_hub_mixin*"
             eval "$PYTEST ../tests/test_serialization.py"
             ;;
@@ -139,6 +153,8 @@ jobs:
     runs-on: windows-latest
     env:
       DISABLE_SYMLINKS_IN_WINDOWS_TESTS: 1
+      UV_HTTP_TIMEOUT: 600 # max 10min to install deps
+      GIT_CLONE_PROTECTION_ACTIVE: false # See https://github.com/git-lfs/git-lfs/issues/5754
     strategy:
       fail-fast: false
       matrix:
@@ -167,7 +183,7 @@ jobs:
         working-directory: ./src # For code coverage to work
         run: |
           ..\.venv\Scripts\activate
-          python -m pytest -n 4 --cov=./huggingface_hub --cov-report=xml:../coverage.xml --vcr-record=none --reruns 5 --reruns-delay 1 --only-rerun '(OSError|Timeout|HTTPError.*502|HTTPError.*504|not less than or equal to 0.01)' ../tests
+          python -m pytest -n 4 --cov=./huggingface_hub --cov-report=xml:../coverage.xml --vcr-record=none --reruns 8 --reruns-delay 2 --only-rerun '(OSError|Timeout|HTTPError.*502|HTTPError.*504|not less than or equal to 0.01)' ../tests
 
       # Upload code coverage
       - name: Upload coverage reports to Codecov with GitHub Action

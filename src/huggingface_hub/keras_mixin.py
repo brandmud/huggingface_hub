@@ -16,7 +16,7 @@ from huggingface_hub.utils import (
     yaml_dump,
 )
 
-from .constants import CONFIG_NAME
+from . import constants
 from .hf_api import HfApi
 from .utils import SoftTemporaryDirectory, logging, validate_hf_hub_args
 from .utils._typing import CallableT
@@ -202,7 +202,7 @@ def save_pretrained_keras(
         if not isinstance(config, dict):
             raise RuntimeError(f"Provided config to save_pretrained_keras should be a dict. Got: '{type(config)}'")
 
-        with (save_directory / CONFIG_NAME).open("w") as f:
+        with (save_directory / constants.CONFIG_NAME).open("w") as f:
             json.dump(config, f)
 
     metadata = {}
@@ -265,9 +265,6 @@ def from_pretrained_keras(*args, **kwargs) -> "KerasModelHubMixin":
         force_download (`bool`, *optional*, defaults to `False`):
             Whether to force the (re-)download of the model weights and
             configuration files, overriding the cached versions if they exist.
-        resume_download (`bool`, *optional*, defaults to `False`):
-            Whether to delete incompletely received files. Will attempt to
-            resume the download if such a file exists.
         proxies (`Dict[str, str]`, *optional*):
             A dictionary of proxy servers to use by protocol or endpoint, e.g.,
             `{'http': 'foo.bar:3128', 'http://hostname': 'foo.bar:4012'}`. The

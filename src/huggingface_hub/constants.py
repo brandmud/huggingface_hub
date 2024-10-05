@@ -37,11 +37,20 @@ DEFAULT_REQUEST_TIMEOUT = 10
 DOWNLOAD_CHUNK_SIZE = 10 * 1024 * 1024
 HF_TRANSFER_CONCURRENCY = 100
 
+# Constants for serialization
+
+PYTORCH_WEIGHTS_FILE_PATTERN = "pytorch_model{suffix}.bin"  # Unsafe pickle: use safetensors instead
+SAFETENSORS_WEIGHTS_FILE_PATTERN = "model{suffix}.safetensors"
+TF2_WEIGHTS_FILE_PATTERN = "tf_model{suffix}.h5"
+
 # Constants for safetensors repos
 
 SAFETENSORS_SINGLE_FILE = "model.safetensors"
 SAFETENSORS_INDEX_FILE = "model.safetensors.index.json"
 SAFETENSORS_MAX_HEADER_LENGTH = 25_000_000
+
+# Timeout of aquiring file lock and logging the attempt
+FILELOCK_LOG_EVERY_SECONDS = 10
 
 # Git-related constants
 
@@ -93,6 +102,9 @@ DISCUSSION_TYPES: Tuple[DiscussionTypeFilter, ...] = typing.get_args(DiscussionT
 DiscussionStatusFilter = Literal["all", "open", "closed"]
 DISCUSSION_STATUS: Tuple[DiscussionTypeFilter, ...] = typing.get_args(DiscussionStatusFilter)
 
+# Webhook subscription types
+WEBHOOK_DOMAIN_T = Literal["repo", "discussions"]
+
 # default cache
 default_home = os.path.join(os.path.expanduser("~"), ".cache")
 HF_HOME = os.path.expanduser(
@@ -127,8 +139,8 @@ HF_HUB_DISABLE_TELEMETRY = (
 # `_OLD_HF_TOKEN_PATH` is deprecated and will be removed "at some point".
 # See https://github.com/huggingface/huggingface_hub/issues/1232
 _OLD_HF_TOKEN_PATH = os.path.expanduser("~/.huggingface/token")
-HF_TOKEN_PATH = os.path.join(HF_HOME, "token")
-
+HF_TOKEN_PATH = os.environ.get("HF_TOKEN_PATH", os.path.join(HF_HOME, "token"))
+HF_STORED_TOKENS_PATH = os.path.join(os.path.dirname(HF_TOKEN_PATH), "stored_tokens")
 
 if _staging_mode:
     # In staging mode, we use a different cache to ensure we don't mix up production and staging data or tokens
@@ -163,9 +175,8 @@ HF_HUB_DISABLE_IMPLICIT_TOKEN: bool = _is_true(os.environ.get("HF_HUB_DISABLE_IM
 HF_HUB_ENABLE_HF_TRANSFER: bool = _is_true(os.environ.get("HF_HUB_ENABLE_HF_TRANSFER"))
 
 
-# Used if download to `local_dir` and `local_dir_use_symlinks="auto"`
-# Files smaller than 5MB are copy-pasted while bigger files are symlinked. The idea is to save disk-usage by symlinking
-# huge files (i.e. LFS files most of the time) while allowing small files to be manually edited in local folder.
+# UNUSED
+# We don't use symlinks in local dir anymore.
 HF_HUB_LOCAL_DIR_AUTO_SYMLINK_THRESHOLD: int = (
     _as_int(os.environ.get("HF_HUB_LOCAL_DIR_AUTO_SYMLINK_THRESHOLD")) or 5 * 1024 * 1024
 )
@@ -197,7 +208,6 @@ ALL_INFERENCE_API_FRAMEWORKS = MAIN_INFERENCE_API_FRAMEWORKS + [
     "fastai",
     "fasttext",
     "flair",
-    "generic",
     "k2",
     "keras",
     "mindspore",

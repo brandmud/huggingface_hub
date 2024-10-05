@@ -217,7 +217,7 @@ def rmtree_with_retry(path: Union[str, Path]) -> None:
 
 def with_production_testing(func):
     file_download = patch("huggingface_hub.file_download.HUGGINGFACE_CO_URL_TEMPLATE", ENDPOINT_PRODUCTION_URL_SCHEME)
-    hf_api = patch("huggingface_hub.hf_api.ENDPOINT", ENDPOINT_PRODUCTION)
+    hf_api = patch("huggingface_hub.constants.ENDPOINT", ENDPOINT_PRODUCTION)
     return hf_api(file_download(func))
 
 
@@ -436,8 +436,13 @@ def use_tmp_repo(repo_type: str = "model") -> Callable[[T], T]:
         def _inner(*args, **kwargs):
             self = args[0]
             assert isinstance(self, unittest.TestCase)
+            create_repo_kwargs = {}
+            if repo_type == "space":
+                create_repo_kwargs["space_sdk"] = "gradio"
 
-            repo_url = self._api.create_repo(repo_id=repo_name(prefix=repo_type), repo_type=repo_type)
+            repo_url = self._api.create_repo(
+                repo_id=repo_name(prefix=repo_type), repo_type=repo_type, **create_repo_kwargs
+            )
             try:
                 return test_fn(*args, **kwargs, repo_url=repo_url)
             finally:

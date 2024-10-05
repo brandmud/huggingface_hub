@@ -16,18 +16,29 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Union
 
-from huggingface_hub._commit_scheduler import CommitScheduler
+from ._commit_scheduler import CommitScheduler
+from .errors import EntryNotFoundError
+from .repocard import ModelCard
+from .utils import experimental
 
-from .utils import experimental, is_tensorboard_available
 
-
-if is_tensorboard_available():
+# Depending on user's setup, SummaryWriter can come either from 'tensorboardX'
+# or from 'torch.utils.tensorboard'. Both are compatible so let's try to load
+# from either of them.
+try:
     from tensorboardX import SummaryWriter
 
-    # TODO: clarify: should we import from torch.utils.tensorboard ?
+    is_summary_writer_available = True
 
-else:
-    SummaryWriter = object  # Dummy class to avoid failing at import. Will raise on instance creation.
+except ImportError:
+    try:
+        from torch.utils.tensorboard import SummaryWriter
+
+        is_summary_writer_available = False
+    except ImportError:
+        # Dummy class to avoid failing at import. Will raise on instance creation.
+        SummaryWriter = object
+        is_summary_writer_available = False
 
 if TYPE_CHECKING:
     from tensorboardX import SummaryWriter
@@ -81,24 +92,28 @@ class HFSummaryWriter(SummaryWriter):
             Additional keyword arguments passed to `SummaryWriter`.
 
     Examples:
-    ```py
-    >>> from huggingface_hub import HFSummaryWriter
+    ```diff
+    # Taken from https://pytorch.org/docs/stable/tensorboard.html
+    - from torch.utils.tensorboard import SummaryWriter
+    + from huggingface_hub import HFSummaryWriter
 
-    # Logs are automatically pushed every 15 minutes
-    >>> logger = HFSummaryWriter(repo_id="test_hf_logger", commit_every=15)
-    >>> logger.add_scalar("a", 1)
-    >>> logger.add_scalar("b", 2)
-    ...
+    import numpy as np
 
-    # You can also trigger a push manually
-    >>> logger.scheduler.trigger()
+    - writer = SummaryWriter()
+    + writer = HFSummaryWriter(repo_id="username/my-trained-model")
+
+    for n_iter in range(100):
+        writer.add_scalar('Loss/train', np.random.random(), n_iter)
+        writer.add_scalar('Loss/test', np.random.random(), n_iter)
+        writer.add_scalar('Accuracy/train', np.random.random(), n_iter)
+        writer.add_scalar('Accuracy/test', np.random.random(), n_iter)
     ```
 
     ```py
     >>> from huggingface_hub import HFSummaryWriter
 
-    # Logs are automatically pushed every 5 minutes (default) + when exiting the context manager
-    >>> with HFSummaryWriter(repo_id="test_hf_logger") as logger:
+    # Logs are automatically pushed every 15 minutes (5 by default) + when exiting the context manager
+    >>> with HFSummaryWriter(repo_id="test_hf_logger", commit_every=15) as logger:
     ...     logger.add_scalar("a", 1)
     ...     logger.add_scalar("b", 2)
     ```
@@ -106,7 +121,7 @@ class HFSummaryWriter(SummaryWriter):
 
     @experimental
     def __new__(cls, *args, **kwargs) -> "HFSummaryWriter":
-        if not is_tensorboard_available():
+        if not is_summary_writer_available:
             raise ImportError(
                 "You must have `tensorboard` installed to use `HFSummaryWriter`. Please run `pip install --upgrade"
                 " tensorboardX` first."
@@ -161,6 +176,17 @@ class HFSummaryWriter(SummaryWriter):
         self.repo_id = self.scheduler.repo_id
         self.repo_type = self.scheduler.repo_type
         self.repo_revision = self.scheduler.revision
+
+        # Add `hf-summary-writer` tag to the model card metadata
+        try:
+            card = ModelCard.load(repo_id_or_path=self.repo_id, repo_type=self.repo_type)
+        except EntryNotFoundError:
+            card = ModelCard("")
+        tags = card.data.get("tags", [])
+        if "hf-summary-writer" not in tags:
+            tags.append("hf-summary-writer")
+            card.data["tags"] = tags
+            card.push_to_hub(repo_id=self.repo_id, repo_type=self.repo_type)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Push to hub in a non-blocking way when exiting the logger's context manager."""

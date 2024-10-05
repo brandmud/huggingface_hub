@@ -4,7 +4,7 @@
 #   - script: https://github.com/huggingface/huggingface.js/blob/main/packages/tasks/scripts/inference-codegen.ts
 #   - specs:  https://github.com/huggingface/huggingface.js/tree/main/packages/tasks/src/tasks.
 from dataclasses import dataclass
-from typing import Any, List, Literal, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from .base import BaseInferenceType
 
@@ -90,8 +90,10 @@ class AutomaticSpeechRecognitionParameters(BaseInferenceType):
 class AutomaticSpeechRecognitionInput(BaseInferenceType):
     """Inputs for Automatic Speech Recognition inference"""
 
-    inputs: Any
-    """The input audio data"""
+    inputs: str
+    """The input audio data as a base64-encoded string. If no `parameters` are provided, you can
+    also provide the audio data as a raw bytes payload.
+    """
     parameters: Optional[AutomaticSpeechRecognitionParameters] = None
     """Additional inference parameters"""
 

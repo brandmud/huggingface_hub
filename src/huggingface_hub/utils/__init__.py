@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # coding=utf-8
 # Copyright 2021 The HuggingFace Inc. team. All rights reserved.
 #
@@ -16,44 +15,58 @@
 
 # ruff: noqa: F401
 
+from huggingface_hub.errors import (
+    BadRequestError,
+    CacheNotFound,
+    CorruptedCacheException,
+    DisabledRepoError,
+    EntryNotFoundError,
+    FileMetadataError,
+    GatedRepoError,
+    HfHubHTTPError,
+    HFValidationError,
+    LocalEntryNotFoundError,
+    LocalTokenNotFoundError,
+    NotASafetensorsRepoError,
+    OfflineModeIsEnabled,
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+    SafetensorsParsingError,
+)
+
 from . import tqdm as _tqdm  # _tqdm is the module
+from ._auth import get_stored_tokens, get_token
 from ._cache_assets import cached_assets_path
 from ._cache_manager import (
     CachedFileInfo,
     CachedRepoInfo,
     CachedRevisionInfo,
-    CacheNotFound,
-    CorruptedCacheException,
     DeleteCacheStrategy,
     HFCacheInfo,
     scan_cache_dir,
 )
 from ._chunk_utils import chunk_iterable
 from ._datetime import parse_datetime
-from ._errors import (
-    BadRequestError,
-    DisabledRepoError,
-    EntryNotFoundError,
-    FileMetadataError,
-    GatedRepoError,
-    HfHubHTTPError,
-    LocalEntryNotFoundError,
-    RepositoryNotFoundError,
-    RevisionNotFoundError,
-    hf_raise_for_status,
-)
 from ._experimental import experimental
 from ._fixes import SoftTemporaryDirectory, WeakFileLock, yaml_dump
 from ._git_credential import list_credential_helpers, set_git_credential, unset_git_credential
-from ._headers import LocalTokenNotFoundError, build_hf_headers, get_token_to_send
+from ._headers import build_hf_headers, get_token_to_send
 from ._hf_folder import HfFolder
-from ._http import OfflineModeIsEnabled, configure_http_backend, get_session, http_backoff, reset_sessions
+from ._http import (
+    configure_http_backend,
+    fix_hf_endpoint_in_url,
+    get_session,
+    hf_raise_for_status,
+    http_backoff,
+    reset_sessions,
+)
 from ._pagination import paginate
-from ._paths import IGNORE_GIT_FOLDER_PATTERNS, filter_repo_objects
+from ._paths import DEFAULT_IGNORE_PATTERNS, FORBIDDEN_FOLDERS, filter_repo_objects
 from ._runtime import (
     dump_environment_info,
     get_aiohttp_version,
     get_fastai_version,
+    get_fastapi_version,
     get_fastcore_version,
     get_gradio_version,
     get_graphviz_version,
@@ -70,7 +83,9 @@ from ._runtime import (
     get_tf_version,
     get_torch_version,
     is_aiohttp_available,
+    is_colab_enterprise,
     is_fastai_available,
+    is_fastapi_available,
     is_fastcore_available,
     is_google_colab,
     is_gradio_available,
@@ -89,27 +104,9 @@ from ._runtime import (
     is_tf_available,
     is_torch_available,
 )
-from ._safetensors import (
-    NotASafetensorsRepoError,
-    SafetensorsFileMetadata,
-    SafetensorsParsingError,
-    SafetensorsRepoMetadata,
-    TensorInfo,
-)
+from ._safetensors import SafetensorsFileMetadata, SafetensorsRepoMetadata, TensorInfo
 from ._subprocess import capture_output, run_interactive_subprocess, run_subprocess
 from ._telemetry import send_telemetry
-from ._token import get_token
-from ._typing import is_jsonable
-from ._validators import (
-    HFValidationError,
-    smoothly_deprecate_use_auth_token,
-    validate_hf_hub_args,
-    validate_repo_id,
-)
-from .tqdm import (
-    are_progress_bars_disabled,
-    disable_progress_bars,
-    enable_progress_bars,
-    tqdm,
-    tqdm_stream_file,
-)
+from ._typing import is_jsonable, is_simple_optional_type, unwrap_simple_optional_type
+from ._validators import smoothly_deprecate_use_auth_token, validate_hf_hub_args, validate_repo_id
+from .tqdm import are_progress_bars_disabled, disable_progress_bars, enable_progress_bars, tqdm, tqdm_stream_file

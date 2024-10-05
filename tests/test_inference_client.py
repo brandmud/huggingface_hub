@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import io
+import json
 import time
 import unittest
 from pathlib import Path
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -24,12 +26,14 @@ from PIL import Image
 from huggingface_hub import (
     AutomaticSpeechRecognitionOutput,
     ChatCompletionOutput,
-    ChatCompletionOutputChoice,
-    ChatCompletionOutputChoiceMessage,
+    ChatCompletionOutputComplete,
+    ChatCompletionOutputMessage,
+    ChatCompletionOutputUsage,
     ChatCompletionStreamOutput,
     DocumentQuestionAnsweringOutputElement,
     FillMaskOutputElement,
     ImageClassificationOutputElement,
+    ImageToTextOutput,
     InferenceClient,
     ObjectDetectionOutputElement,
     QuestionAnsweringOutputElement,
@@ -43,10 +47,15 @@ from huggingface_hub import (
     hf_hub_download,
 )
 from huggingface_hub.constants import ALL_INFERENCE_API_FRAMEWORKS, MAIN_INFERENCE_API_FRAMEWORKS
+from huggingface_hub.errors import HfHubHTTPError, ValidationError
 from huggingface_hub.inference._client import _open_as_binary
-from huggingface_hub.utils import HfHubHTTPError, build_hf_headers
+from huggingface_hub.inference._common import (
+    _stream_chat_completion_response,
+    _stream_text_generation_response,
+)
+from huggingface_hub.utils import build_hf_headers
 
-from .testing_utils import expect_deprecation, with_production_testing
+from .testing_utils import with_production_testing
 
 
 # Avoid call to hf.co/api/models in VCRed tests
@@ -58,6 +67,7 @@ _RECOMMENDED_MODELS_FOR_VCR = {
     "document-question-answering": "naver-clova-ix/donut-base-finetuned-docvqa",
     "feature-extraction": "facebook/bart-base",
     "image-classification": "google/vit-base-patch16-224",
+    "image-to-text": "Salesforce/blip-image-captioning-base",
     "image-segmentation": "facebook/detr-resnet-50-panoptic",
     "object-detection": "facebook/detr-resnet-50",
     "sentence-similarity": "sentence-transformers/all-MiniLM-L6-v2",
@@ -81,6 +91,87 @@ CHAT_COMPLETION_MESSAGES = [
     {"role": "user", "content": "What is deep learning?"},
 ]
 CHAT_COMPLETE_NON_TGI_MODEL = "microsoft/DialoGPT-small"
+
+CHAT_COMPLETION_TOOL_INSTRUCTIONS = [
+    {
+        "role": "system",
+        "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.",
+    },
+    {
+        "role": "user",
+        "content": "What's the weather like the next 3 days in San Francisco, CA?",
+    },
+]
+CHAT_COMPLETION_TOOLS = [  # 1 tool to get current weather, 1 to get N-day weather forecast
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_weather",
+            "description": "Get the current weather",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA",
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"],
+                        "description": "The temperature unit to use. Infer this from the users location.",
+                    },
+                },
+                "required": ["location", "format"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_n_day_weather_forecast",
+            "description": "Get an N-day weather forecast",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA",
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"],
+                        "description": "The temperature unit to use. Infer this from the users location.",
+                    },
+                    "num_days": {
+                        "type": "integer",
+                        "description": "The number of days to forecast",
+                    },
+                },
+                "required": ["location", "format", "num_days"],
+            },
+        },
+    },
+]
+
+CHAT_COMPLETION_RESPONSE_FORMAT_MESSAGE = [
+    {
+        "role": "user",
+        "content": "I saw a puppy a cat and a raccoon during my bike ride in the park. What did I saw and when?",
+    },
+]
+
+CHAT_COMPLETION_RESPONSE_FORMAT = {
+    "type": "json",
+    "value": {
+        "properties": {
+            "location": {"type": "string"},
+            "activity": {"type": "string"},
+            "animals_seen": {"type": "integer", "minimum": 1, "maximum": 5},
+            "animals": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["location", "activity", "animals_seen", "animals"],
+    },
+}
 
 
 class InferenceClientTest(unittest.TestCase):
@@ -148,10 +239,10 @@ class InferenceClientVCRTest(InferenceClientTest):
         assert isinstance(output, ChatCompletionOutput)
         assert output.created < time.time()
         assert output.choices == [
-            ChatCompletionOutputChoice(
+            ChatCompletionOutputComplete(
                 finish_reason="length",
                 index=0,
-                message=ChatCompletionOutputChoiceMessage(
+                message=ChatCompletionOutputMessage(
                     content="Deep learning is a subfield of machine learning that focuses on training artificial neural networks with multiple layers of",
                     role="assistant",
                 ),
@@ -202,49 +293,95 @@ class InferenceClientVCRTest(InferenceClientTest):
         )
         assert output == ChatCompletionOutput(
             choices=[
-                ChatCompletionOutputChoice(
-                    finish_reason="unk",  # <- specific to models served with transformers (not possible to get details)
+                ChatCompletionOutputComplete(
+                    finish_reason="eos_token",
                     index=0,
-                    message=ChatCompletionOutputChoiceMessage(
-                        content="Deep learning is a thing.",
-                        role="assistant",
+                    message=ChatCompletionOutputMessage(
+                        role="assistant", content="What does deep learning have to do with anything?", tool_calls=None
                     ),
+                    logprobs=None,
                 )
             ],
-            created=output.created,
+            created=1721743094,
+            id="",
+            model="microsoft/DialoGPT-small",
+            system_fingerprint="2.1.1-sha-4dfdb48",
+            usage=ChatCompletionOutputUsage(completion_tokens=11, prompt_tokens=13, total_tokens=24),
         )
 
-    @expect_deprecation("InferenceClient.conversational")
-    def test_conversational(self) -> None:
-        output = self.client.conversational("Hi, who are you?")
-        self.assertEqual(
-            output,
-            {
-                "generated_text": "I am the one who knocks.",
-                "conversation": {
-                    "generated_responses": ["I am the one who knocks."],
-                    "past_user_inputs": ["Hi, who are you?"],
-                },
-                "warnings": ["Setting `pad_token_id` to `eos_token_id`:50256 for open-end generation."],
-            },
+    def test_chat_completion_with_tool(self) -> None:
+        response = self.client.chat_completion(
+            model="meta-llama/Meta-Llama-3-70B-Instruct",
+            messages=CHAT_COMPLETION_TOOL_INSTRUCTIONS,
+            tools=CHAT_COMPLETION_TOOLS,
+            tool_choice="auto",
+            max_tokens=500,
         )
+        output = response.choices[0]
 
-        output2 = self.client.conversational(
-            "Wow, that's scary!",
-            generated_responses=output["conversation"]["generated_responses"],
-            past_user_inputs=output["conversation"]["past_user_inputs"],
+        # Single message before EOS
+        assert output.finish_reason == "eos_token"
+        assert output.index == 0
+        assert output.message.role == "assistant"
+
+        # No content but a tool call
+        assert output.message.content is None
+        assert len(output.message.tool_calls) == 1
+
+        # Tool
+        tool_call = output.message.tool_calls[0]
+        assert tool_call.type == "function"
+        assert tool_call.function.name == "get_n_day_weather_forecast"
+        assert tool_call.function.arguments == {
+            "format": "fahrenheit",
+            "location": "San Francisco, CA",
+            "num_days": 3,
+        }
+
+        # Now, test with tool_choice="get_current_weather"
+        response = self.client.chat_completion(
+            model="meta-llama/Meta-Llama-3-70B-Instruct",
+            messages=CHAT_COMPLETION_TOOL_INSTRUCTIONS,
+            tools=CHAT_COMPLETION_TOOLS,
+            tool_choice="get_current_weather",
+            max_tokens=500,
         )
-        self.assertEqual(
-            output2,
-            {
-                "generated_text": "I am the one who knocks.",
-                "conversation": {
-                    "generated_responses": ["I am the one who knocks.", "I am the one who knocks."],
-                    "past_user_inputs": ["Hi, who are you?", "Wow, that's scary!"],
-                },
-                "warnings": ["Setting `pad_token_id` to `eos_token_id`:50256 for open-end generation."],
-            },
+        output = response.choices[0]
+        tool_call = output.message.tool_calls[0]
+        assert tool_call.function.name == "get_current_weather"
+        # No need for 'num_days' with this tool
+        assert tool_call.function.arguments == {
+            "format": "fahrenheit",
+            "location": "San Francisco, CA",
+        }
+
+    def test_chat_completion_with_response_format(self) -> None:
+        response = self.client.chat_completion(
+            model="meta-llama/Meta-Llama-3-70B-Instruct",
+            messages=CHAT_COMPLETION_RESPONSE_FORMAT_MESSAGE,
+            response_format=CHAT_COMPLETION_RESPONSE_FORMAT,
+            max_tokens=500,
         )
+        output = response.choices[0].message.content
+        assert json.loads(output) == {
+            "activity": "bike ride",
+            "animals": ["puppy", "cat", "raccoon"],
+            "animals_seen": 3,
+            "location": "park",
+        }
+
+    def test_chat_completion_unprocessable_entity(self) -> None:
+        """Regression test for #2225.
+
+        See https://github.com/huggingface/huggingface_hub/issues/2225.
+        """
+        with self.assertRaises(HfHubHTTPError):
+            self.client.chat_completion(
+                "please output 'Observation'",  # Not a list of messages
+                stop=["Observation", "Final Answer"],
+                max_tokens=200,
+                model="meta-llama/Meta-Llama-3-70B-Instruct",
+            )
 
     def test_document_question_answering(self) -> None:
         output = self.client.document_question_answering(self.document_file, "What is the purchase amount?")
@@ -345,11 +482,10 @@ class InferenceClientVCRTest(InferenceClientTest):
     #     self.assertEqual(image.height, 512)
     #     self.assertEqual(image.width, 512)
 
-    # ERROR 500 from server
-    # Only during tests, not when running locally. Has to be investigated.
-    # def test_image_to_text(self) -> None:
-    #     caption = self.client.image_to_text(self.image_file)
-    #     self.assertEqual(caption, "")
+    def test_image_to_text(self) -> None:
+        caption = self.client.image_to_text(self.image_file)
+        assert isinstance(caption, ImageToTextOutput)
+        assert caption.generated_text == "a woman in a hat and dress posing for a photo"
 
     def test_object_detection(self) -> None:
         output = self.client.object_detection(self.image_file)
@@ -541,11 +677,6 @@ class InferenceClientVCRTest(InferenceClientTest):
             self.assertIsInstance(item.label, str)
             self.assertIsInstance(item.score, float)
 
-    @expect_deprecation("InferenceClient.conversational")
-    def test_unprocessable_entity_error(self) -> None:
-        with self.assertRaisesRegex(HfHubHTTPError, "Make sure 'conversational' task is supported by the model."):
-            self.client.conversational("Hi, who are you?", model="HuggingFaceH4/zephyr-7b-alpha")
-
 
 class TestOpenAsBinary(InferenceClientTest):
     def test_open_as_binary_with_none(self) -> None:
@@ -576,6 +707,7 @@ class TestOpenAsBinary(InferenceClientTest):
             self.assertEqual(content, content_bytes)
 
 
+@patch("huggingface_hub.inference._client._fetch_recommended_models", lambda: _RECOMMENDED_MODELS_FOR_VCR)
 class TestResolveURL(InferenceClientTest):
     FAKE_ENDPOINT = "https://my-endpoint.hf.co"
 
@@ -641,19 +773,22 @@ class TestHeadersAndCookies(unittest.TestCase):
     @patch("huggingface_hub.inference._client.get_session")
     def test_mocked_post(self, get_session_mock: MagicMock) -> None:
         """Test that headers and cookies are correctly passed to the request."""
-        client = InferenceClient(headers={"X-My-Header": "foo"}, cookies={"my-cookie": "bar"})
+        client = InferenceClient(
+            headers={"X-My-Header": "foo"}, cookies={"my-cookie": "bar"}, proxies="custom proxies"
+        )
         response = client.post(data=b"content", model="username/repo_name")
         self.assertEqual(response, get_session_mock().post.return_value.content)
 
-        expected_user_agent = build_hf_headers()["user-agent"]
+        expected_headers = build_hf_headers()
         get_session_mock().post.assert_called_once_with(
             "https://api-inference.huggingface.co/models/username/repo_name",
             json=None,
             data=b"content",
-            headers={"user-agent": expected_user_agent, "X-My-Header": "foo"},
+            headers={**expected_headers, "X-My-Header": "foo"},
             cookies={"my-cookie": "bar"},
             timeout=None,
             stream=False,
+            proxies="custom proxies",
         )
 
     @patch("huggingface_hub.inference._client._bytes_to_image")
@@ -725,3 +860,226 @@ class TestListDeployedModels(unittest.TestCase):
 
         self.assertIn("text-generation", models_by_task)
         self.assertIn("bigscience/bloom", models_by_task["text-generation"])
+
+
+@pytest.mark.vcr
+@with_production_testing
+class TestOpenAICompatibility(unittest.TestCase):
+    def test_base_url_and_api_key(self):
+        client = InferenceClient(
+            base_url="https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct",
+            api_key="my-api-key",
+        )
+        output = client.chat.completions.create(
+            model="meta-llama/Meta-Llama-3-8B-Instruct",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Count to 10"},
+            ],
+            stream=False,
+            max_tokens=1024,
+        )
+        assert output.choices[0].message.content == "1, 2, 3, 4, 5, 6, 7, 8, 9, 10!"
+
+    def test_without_base_url(self):
+        client = InferenceClient()
+        output = client.chat.completions.create(
+            model="meta-llama/Meta-Llama-3-8B-Instruct",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Count to 10"},
+            ],
+            stream=False,
+            max_tokens=1024,
+        )
+        assert output.choices[0].message.content == "1, 2, 3, 4, 5, 6, 7, 8, 9, 10!"
+
+    def test_with_stream_true(self):
+        client = InferenceClient()
+        output = client.chat.completions.create(
+            model="meta-llama/Meta-Llama-3-8B-Instruct",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Count to 10"},
+            ],
+            stream=True,
+            max_tokens=1024,
+        )
+
+        chunked_text = [chunk.choices[0].delta.content for chunk in output]
+        assert len(chunked_text) == 34
+        assert "".join(chunked_text) == "Here it goes:\n\n1, 2, 3, 4, 5, 6, 7, 8, 9, 10!"
+
+    def test_token_and_api_key_mutually_exclusive(self):
+        with self.assertRaises(ValueError):
+            InferenceClient(token="my-token", api_key="my-api-key")
+
+    def test_model_and_base_url_mutually_exclusive(self):
+        with self.assertRaises(ValueError):
+            InferenceClient(model="meta-llama/Meta-Llama-3-8B-Instruct", base_url="http://127.0.0.1:8000")
+
+
+@pytest.mark.parametrize(
+    "stop_signal",
+    [
+        b"data: [DONE]",
+        b"data: [DONE]\n",
+        b"data: [DONE] ",
+    ],
+)
+def test_stream_text_generation_response(stop_signal: bytes):
+    data = [
+        b'data: {"index":1,"token":{"id":4560,"text":" trying","logprob":-2.078125,"special":false},"generated_text":null,"details":null}',
+        b"",  # Empty line is skipped
+        b"\n",  # Newline is skipped
+        b'data: {"index":2,"token":{"id":311,"text":" to","logprob":-0.026245117,"special":false},"generated_text":" trying to","details":null}',
+        stop_signal,  # Stop signal
+        # Won't parse after
+        b'data: {"index":2,"token":{"id":311,"text":" to","logprob":-0.026245117,"special":false},"generated_text":" trying to","details":null}',
+    ]
+    output = list(_stream_text_generation_response(data, details=False))
+    assert len(output) == 2
+    assert output == [" trying", " to"]
+
+
+@pytest.mark.parametrize(
+    "stop_signal",
+    [
+        b"data: [DONE]",
+        b"data: [DONE]\n",
+        b"data: [DONE] ",
+    ],
+)
+def test_stream_chat_completion_response(stop_signal: bytes):
+    data = [
+        b'data: {"object":"chat.completion.chunk","id":"","created":1721737661,"model":"","system_fingerprint":"2.1.2-dev0-sha-5fca30e","choices":[{"index":0,"delta":{"role":"assistant","content":"Both"},"logprobs":null,"finish_reason":null}]}',
+        b"",  # Empty line is skipped
+        b"\n",  # Newline is skipped
+        b'data: {"object":"chat.completion.chunk","id":"","created":1721737661,"model":"","system_fingerprint":"2.1.2-dev0-sha-5fca30e","choices":[{"index":0,"delta":{"role":"assistant","content":" Rust"},"logprobs":null,"finish_reason":null}]}',
+        stop_signal,  # Stop signal
+        # Won't parse after
+        b'data: {"index":2,"token":{"id":311,"text":" to","logprob":-0.026245117,"special":false},"generated_text":" trying to","details":null}',
+    ]
+    output = list(_stream_chat_completion_response(data))
+    assert len(output) == 2
+    assert output[0].choices[0].delta.content == "Both"
+    assert output[1].choices[0].delta.content == " Rust"
+
+
+def test_chat_completion_error_in_stream():
+    """
+    Regression test for https://github.com/huggingface/huggingface_hub/issues/2514.
+    When an error is encountered in the stream, it should raise a TextGenerationError (e.g. a ValidationError).
+    """
+    data = [
+        b'data: {"object":"chat.completion.chunk","id":"","created":1721737661,"model":"","system_fingerprint":"2.1.2-dev0-sha-5fca30e","choices":[{"index":0,"delta":{"role":"assistant","content":"Both"},"logprobs":null,"finish_reason":null}]}',
+        b'data: {"error":"Input validation error: `inputs` tokens + `max_new_tokens` must be <= 4096. Given: 6 `inputs` tokens and 4091 `max_new_tokens`","error_type":"validation"}',
+    ]
+    with pytest.raises(ValidationError):
+        for token in _stream_chat_completion_response(data):
+            pass
+
+
+INFERENCE_API_URL = "https://api-inference.huggingface.co/models"
+INFERENCE_ENDPOINT_URL = "https://rur2d6yoccusjxgn.us-east-1.aws.endpoints.huggingface.cloud"  # example
+LOCAL_TGI_URL = "http://0.0.0.0:8080"
+
+
+@pytest.mark.parametrize(
+    ("client_model", "client_base_url", "model", "expected_url"),
+    [
+        (
+            # Inference API - model global to client
+            "username/repo_name",
+            None,
+            None,
+            f"{INFERENCE_API_URL}/username/repo_name/v1/chat/completions",
+        ),
+        (
+            # Inference API - model specific to request
+            None,
+            None,
+            "username/repo_name",
+            f"{INFERENCE_API_URL}/username/repo_name/v1/chat/completions",
+        ),
+        (
+            # Inference Endpoint - url global to client as 'model'
+            INFERENCE_ENDPOINT_URL,
+            None,
+            None,
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+        ),
+        (
+            # Inference Endpoint - url global to client as 'base_url'
+            None,
+            INFERENCE_ENDPOINT_URL,
+            None,
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+        ),
+        (
+            # Inference Endpoint - url specific to request
+            None,
+            None,
+            INFERENCE_ENDPOINT_URL,
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+        ),
+        (
+            # Inference Endpoint - url global to client as 'base_url' - explicit model id
+            None,
+            INFERENCE_ENDPOINT_URL,
+            "username/repo_name",
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+        ),
+        (
+            # Inference Endpoint - full url global to client as 'model'
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+            None,
+            None,
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+        ),
+        (
+            # Inference Endpoint - full url global to client as 'base_url'
+            None,
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+            None,
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+        ),
+        (
+            # Inference Endpoint - full url specific to request
+            None,
+            None,
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+        ),
+        (
+            # Inference Endpoint - url with '/v1' (OpenAI compatibility)
+            # Regression test for https://github.com/huggingface/huggingface_hub/pull/2418
+            None,
+            None,
+            f"{INFERENCE_ENDPOINT_URL}/v1",
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+        ),
+        (
+            # Inference Endpoint - url with '/v1/' (OpenAI compatibility)
+            # Regression test for https://github.com/huggingface/huggingface_hub/pull/2418
+            None,
+            None,
+            f"{INFERENCE_ENDPOINT_URL}/v1/",
+            f"{INFERENCE_ENDPOINT_URL}/v1/chat/completions",
+        ),
+        (
+            # Local TGI with trailing '/v1'
+            # Regression test for https://github.com/huggingface/huggingface_hub/issues/2414
+            f"{LOCAL_TGI_URL}/v1",  # expected from OpenAI client
+            None,
+            None,
+            f"{LOCAL_TGI_URL}/v1/chat/completions",
+        ),
+    ],
+)
+def test_resolve_chat_completion_url(
+    client_model: Optional[str], client_base_url: Optional[str], model: Optional[str], expected_url: str
+):
+    client = InferenceClient(model=client_model, base_url=client_base_url)
+    url = client._resolve_chat_completion_url(model)
+    assert url == expected_url

@@ -16,7 +16,10 @@
 
 from typing import Dict, Optional, Union
 
+from huggingface_hub.errors import LocalTokenNotFoundError
+
 from .. import constants
+from ._auth import get_token
 from ._runtime import (
     get_fastai_version,
     get_fastcore_version,
@@ -29,12 +32,7 @@ from ._runtime import (
     is_tf_available,
     is_torch_available,
 )
-from ._token import get_token
 from ._validators import validate_hf_hub_args
-
-
-class LocalTokenNotFoundError(EnvironmentError):
-    """Raised if local token is required but not found."""
 
 
 @validate_hf_hub_args

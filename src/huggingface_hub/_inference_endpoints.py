@@ -4,9 +4,11 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
+from huggingface_hub.errors import InferenceEndpointError, InferenceEndpointTimeoutError
+
 from .inference._client import InferenceClient
 from .inference._generated._async_client import AsyncInferenceClient
-from .utils import logging, parse_datetime
+from .utils import get_session, logging, parse_datetime
 
 
 if TYPE_CHECKING:
@@ -14,14 +16,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.get_logger(__name__)
-
-
-class InferenceEndpointError(Exception):
-    """Generic exception when dealing with Inference Endpoints."""
-
-
-class InferenceEndpointTimeoutError(InferenceEndpointError, TimeoutError):
-    """Exception for timeouts while waiting for Inference Endpoint."""
 
 
 class InferenceEndpointStatus(str, Enum):
@@ -200,10 +194,6 @@ class InferenceEndpoint:
             [`InferenceEndpointTimeoutError`]
                 If the Inference Endpoint is not deployed after `timeout` seconds.
         """
-        if self.url is not None:  # Means the endpoint is deployed
-            logger.info("Inference Endpoint is ready to be used.")
-            return self
-
         if timeout is not None and timeout < 0:
             raise ValueError("`timeout` cannot be negative.")
         if refresh_every <= 0:
@@ -211,10 +201,12 @@ class InferenceEndpoint:
 
         start = time.time()
         while True:
-            self.fetch()
-            if self.url is not None:  # Means the endpoint is deployed
-                logger.info("Inference Endpoint is ready to be used.")
-                return self
+            if self.url is not None:
+                # Means the URL is provisioned => check if the endpoint is reachable
+                response = get_session().get(self.url, headers=self._api._build_hf_headers(token=self._token))
+                if response.status_code == 200:
+                    logger.info("Inference Endpoint is ready to be used.")
+                    return self
             if self.status == InferenceEndpointStatus.FAILED:
                 raise InferenceEndpointError(
                     f"Inference Endpoint {self.name} failed to deploy. Please check the logs for more information."
@@ -224,6 +216,7 @@ class InferenceEndpoint:
                     raise InferenceEndpointTimeoutError("Timeout while waiting for Inference Endpoint to be deployed.")
             logger.info(f"Inference Endpoint is not deployed yet ({self.status}). Waiting {refresh_every}s...")
             time.sleep(refresh_every)
+            self.fetch()
 
     def fetch(self) -> "InferenceEndpoint":
         """Fetch latest information about the Inference Endpoint.
@@ -245,11 +238,14 @@ class InferenceEndpoint:
         instance_type: Optional[str] = None,
         min_replica: Optional[int] = None,
         max_replica: Optional[int] = None,
+        scale_to_zero_timeout: Optional[int] = None,
         # Model update
         repository: Optional[str] = None,
         framework: Optional[str] = None,
         revision: Optional[str] = None,
         task: Optional[str] = None,
+        custom_image: Optional[Dict] = None,
+        secrets: Optional[Dict[str, str]] = None,
     ) -> "InferenceEndpoint":
         """Update the Inference Endpoint.
 
@@ -263,13 +259,15 @@ class InferenceEndpoint:
             accelerator (`str`, *optional*):
                 The hardware accelerator to be used for inference (e.g. `"cpu"`).
             instance_size (`str`, *optional*):
-                The size or type of the instance to be used for hosting the model (e.g. `"large"`).
+                The size or type of the instance to be used for hosting the model (e.g. `"x4"`).
             instance_type (`str`, *optional*):
-                The cloud instance type where the Inference Endpoint will be deployed (e.g. `"c6i"`).
+                The cloud instance type where the Inference Endpoint will be deployed (e.g. `"intel-icl"`).
             min_replica (`int`, *optional*):
                 The minimum number of replicas (instances) to keep running for the Inference Endpoint.
             max_replica (`int`, *optional*):
                 The maximum number of replicas (instances) to scale to for the Inference Endpoint.
+            scale_to_zero_timeout (`int`, *optional*):
+                The duration in minutes before an inactive endpoint is scaled to zero.
 
             repository (`str`, *optional*):
                 The name of the model repository associated with the Inference Endpoint (e.g. `"gpt2"`).
@@ -279,7 +277,11 @@ class InferenceEndpoint:
                 The specific model revision to deploy on the Inference Endpoint (e.g. `"6c0e6080953db56375760c0471a8c5f2929baf11"`).
             task (`str`, *optional*):
                 The task on which to deploy the model (e.g. `"text-classification"`).
-
+            custom_image (`Dict`, *optional*):
+                A custom Docker image to use for the Inference Endpoint. This is useful if you want to deploy an
+                Inference Endpoint running on the `text-generation-inference` (TGI) framework (see examples).
+            secrets (`Dict[str, str]`, *optional*):
+                Secret values to inject in the container environment.
         Returns:
             [`InferenceEndpoint`]: the same Inference Endpoint, mutated in place with the latest data.
         """
@@ -292,10 +294,13 @@ class InferenceEndpoint:
             instance_type=instance_type,
             min_replica=min_replica,
             max_replica=max_replica,
+            scale_to_zero_timeout=scale_to_zero_timeout,
             repository=repository,
             framework=framework,
             revision=revision,
             task=task,
+            custom_image=custom_image,
+            secrets=secrets,
             token=self._token,  # type: ignore [arg-type]
         )
 
@@ -322,16 +327,23 @@ class InferenceEndpoint:
         self._populate_from_raw()
         return self
 
-    def resume(self) -> "InferenceEndpoint":
+    def resume(self, running_ok: bool = True) -> "InferenceEndpoint":
         """Resume the Inference Endpoint.
 
         This is an alias for [`HfApi.resume_inference_endpoint`]. The current object is mutated in place with the
         latest data from the server.
 
+        Args:
+            running_ok (`bool`, *optional*):
+                If `True`, the method will not raise an error if the Inference Endpoint is already running. Defaults to
+                `True`.
+
         Returns:
             [`InferenceEndpoint`]: the same Inference Endpoint, mutated in place with the latest data.
         """
-        obj = self._api.resume_inference_endpoint(name=self.name, namespace=self.namespace, token=self._token)  # type: ignore [arg-type]
+        obj = self._api.resume_inference_endpoint(
+            name=self.name, namespace=self.namespace, running_ok=running_ok, token=self._token
+        )  # type: ignore [arg-type]
         self.raw = obj.raw
         self._populate_from_raw()
         return self

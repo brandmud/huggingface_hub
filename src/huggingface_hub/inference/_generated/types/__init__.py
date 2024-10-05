@@ -19,13 +19,33 @@ from .automatic_speech_recognition import (
 from .base import BaseInferenceType
 from .chat_completion import (
     ChatCompletionInput,
+    ChatCompletionInputFunctionDefinition,
+    ChatCompletionInputFunctionName,
+    ChatCompletionInputGrammarType,
     ChatCompletionInputMessage,
+    ChatCompletionInputMessageChunk,
+    ChatCompletionInputStreamOptions,
+    ChatCompletionInputToolType,
+    ChatCompletionInputURL,
     ChatCompletionOutput,
-    ChatCompletionOutputChoice,
-    ChatCompletionOutputChoiceMessage,
+    ChatCompletionOutputComplete,
+    ChatCompletionOutputFunctionDefinition,
+    ChatCompletionOutputLogprob,
+    ChatCompletionOutputLogprobs,
+    ChatCompletionOutputMessage,
+    ChatCompletionOutputToolCall,
+    ChatCompletionOutputTopLogprob,
+    ChatCompletionOutputUsage,
     ChatCompletionStreamOutput,
     ChatCompletionStreamOutputChoice,
     ChatCompletionStreamOutputDelta,
+    ChatCompletionStreamOutputDeltaToolCall,
+    ChatCompletionStreamOutputFunction,
+    ChatCompletionStreamOutputLogprob,
+    ChatCompletionStreamOutputLogprobs,
+    ChatCompletionStreamOutputTopLogprob,
+    ChatCompletionStreamOutputUsage,
+    ToolElement,
 )
 from .depth_estimation import DepthEstimationInput, DepthEstimationOutput
 from .document_question_answering import (
@@ -57,7 +77,7 @@ from .question_answering import (
     QuestionAnsweringParameters,
 )
 from .sentence_similarity import SentenceSimilarityInput, SentenceSimilarityInputData
-from .summarization import SummarizationGenerationParameters, SummarizationInput, SummarizationOutput
+from .summarization import SummarizationInput, SummarizationOutput, SummarizationParameters
 from .table_question_answering import (
     TableQuestionAnsweringInput,
     TableQuestionAnsweringInputData,
@@ -67,23 +87,31 @@ from .text2text_generation import Text2TextGenerationInput, Text2TextGenerationO
 from .text_classification import TextClassificationInput, TextClassificationOutputElement, TextClassificationParameters
 from .text_generation import (
     TextGenerationInput,
+    TextGenerationInputGenerateParameters,
+    TextGenerationInputGrammarType,
     TextGenerationOutput,
+    TextGenerationOutputBestOfSequence,
     TextGenerationOutputDetails,
-    TextGenerationOutputSequenceDetails,
+    TextGenerationOutputPrefillToken,
     TextGenerationOutputToken,
-    TextGenerationParameters,
-    TextGenerationPrefillToken,
-    TextGenerationStreamDetails,
     TextGenerationStreamOutput,
+    TextGenerationStreamOutputStreamDetails,
+    TextGenerationStreamOutputToken,
 )
 from .text_to_audio import TextToAudioGenerationParameters, TextToAudioInput, TextToAudioOutput, TextToAudioParameters
 from .text_to_image import TextToImageInput, TextToImageOutput, TextToImageParameters, TextToImageTargetSize
+from .text_to_speech import (
+    TextToSpeechGenerationParameters,
+    TextToSpeechInput,
+    TextToSpeechOutput,
+    TextToSpeechParameters,
+)
 from .token_classification import (
     TokenClassificationInput,
     TokenClassificationOutputElement,
     TokenClassificationParameters,
 )
-from .translation import TranslationGenerationParameters, TranslationInput, TranslationOutput
+from .translation import TranslationInput, TranslationOutput, TranslationParameters
 from .video_classification import (
     VideoClassificationInput,
     VideoClassificationOutputElement,

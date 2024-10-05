@@ -9,9 +9,12 @@ from unittest.mock import Mock, patch
 
 from huggingface_hub.commands.delete_cache import DeleteCacheCommand
 from huggingface_hub.commands.download import DownloadCommand
+from huggingface_hub.commands.repo_files import DeleteFilesSubCommand, RepoFilesCommand
 from huggingface_hub.commands.scan_cache import ScanCacheCommand
+from huggingface_hub.commands.tag import TagCommands
 from huggingface_hub.commands.upload import UploadCommand
-from huggingface_hub.utils import RevisionNotFoundError, SoftTemporaryDirectory, capture_output
+from huggingface_hub.errors import RevisionNotFoundError
+from huggingface_hub.utils import SoftTemporaryDirectory, capture_output
 
 from .testing_utils import DUMMY_MODEL_ID
 
@@ -358,7 +361,6 @@ class TestDownloadCommand(unittest.TestCase):
         self.assertIsNone(args.exclude)
         self.assertIsNone(args.cache_dir)
         self.assertIsNone(args.local_dir)
-        self.assertEqual(args.local_dir_use_symlinks, "auto")
         self.assertFalse(args.force_download)
         self.assertFalse(args.resume_download)
         self.assertIsNone(args.token)
@@ -390,8 +392,8 @@ class TestDownloadCommand(unittest.TestCase):
                 "--quiet",
                 "--local-dir",
                 ".",
-                "--local-dir-use-symlinks",
-                "True",
+                "--max-workers",
+                "4",
             ]
         )
         self.assertEqual(args.repo_id, DUMMY_MODEL_ID)
@@ -402,10 +404,10 @@ class TestDownloadCommand(unittest.TestCase):
         self.assertTrue(args.force_download)
         self.assertEqual(args.cache_dir, "/tmp")
         self.assertEqual(args.local_dir, ".")
-        self.assertTrue(args.local_dir_use_symlinks)
         self.assertTrue(args.resume_download)
         self.assertEqual(args.token, "my-token")
         self.assertTrue(args.quiet)
+        self.assertEqual(args.max_workers, 4)
         self.assertEqual(args.func, DownloadCommand)
 
     @patch("huggingface_hub.commands.download.hf_hub_download")
@@ -422,8 +424,9 @@ class TestDownloadCommand(unittest.TestCase):
             resume_download=False,
             cache_dir=None,
             local_dir=".",
-            local_dir_use_symlinks="auto",
+            local_dir_use_symlinks=None,
             quiet=False,
+            max_workers=8,
         )
 
         # Output path is printed to terminal once run is completed
@@ -437,11 +440,10 @@ class TestDownloadCommand(unittest.TestCase):
             revision="refs/pr/1",
             filename="README.md",
             cache_dir=None,
-            resume_download=False,
+            resume_download=None,
             force_download=False,
             token="hf_****",
             local_dir=".",
-            local_dir_use_symlinks="auto",
             library_name="huggingface-cli",
         )
 
@@ -459,8 +461,9 @@ class TestDownloadCommand(unittest.TestCase):
             resume_download=True,
             cache_dir=None,
             local_dir="/path/to/dir",
-            local_dir_use_symlinks="False",
+            local_dir_use_symlinks=None,
             quiet=False,
+            max_workers=8,
         )
         DownloadCommand(args).run()
 
@@ -476,8 +479,8 @@ class TestDownloadCommand(unittest.TestCase):
             cache_dir=None,
             token="hf_****",
             local_dir="/path/to/dir",
-            local_dir_use_symlinks=False,
             library_name="huggingface-cli",
+            max_workers=8,
         )
 
     @patch("huggingface_hub.commands.download.snapshot_download")
@@ -495,7 +498,8 @@ class TestDownloadCommand(unittest.TestCase):
             cache_dir=None,
             quiet=False,
             local_dir=None,
-            local_dir_use_symlinks="auto",
+            local_dir_use_symlinks=None,
+            max_workers=8,
         )
         DownloadCommand(args).run()
 
@@ -510,9 +514,9 @@ class TestDownloadCommand(unittest.TestCase):
             force_download=True,
             cache_dir=None,
             local_dir=None,
-            local_dir_use_symlinks="auto",
             token=None,
             library_name="huggingface-cli",
+            max_workers=8,
         )
 
     @patch("huggingface_hub.commands.download.snapshot_download")
@@ -530,7 +534,8 @@ class TestDownloadCommand(unittest.TestCase):
             cache_dir=None,
             quiet=False,
             local_dir=None,
-            local_dir_use_symlinks="auto",
+            local_dir_use_symlinks=None,
+            max_workers=8,
         )
 
         with self.assertWarns(UserWarning):
@@ -548,8 +553,8 @@ class TestDownloadCommand(unittest.TestCase):
             cache_dir=None,
             token=None,
             local_dir=None,
-            local_dir_use_symlinks="auto",
             library_name="huggingface-cli",
+            max_workers=8,
         )
 
         # Same but quiet (no warnings)
@@ -558,6 +563,65 @@ class TestDownloadCommand(unittest.TestCase):
             # Taken from https://docs.pytest.org/en/latest/how-to/capture-warnings.html#additional-use-cases-of-warnings-in-tests
             warnings.simplefilter("error")
             DownloadCommand(args).run()
+
+
+class TestTagCommands(unittest.TestCase):
+    def setUp(self) -> None:
+        """
+        Set up CLI as in `src/huggingface_hub/commands/huggingface_cli.py`.
+        """
+        self.parser = ArgumentParser("huggingface-cli", usage="huggingface-cli <command> [<args>]")
+        commands_parser = self.parser.add_subparsers()
+        TagCommands.register_subcommand(commands_parser)
+
+    def test_tag_create_basic(self) -> None:
+        args = self.parser.parse_args(["tag", DUMMY_MODEL_ID, "1.0", "-m", "My tag message"])
+        self.assertEqual(args.repo_id, DUMMY_MODEL_ID)
+        self.assertEqual(args.tag, "1.0")
+        self.assertIsNotNone(args.message)
+        self.assertIsNone(args.revision)
+        self.assertIsNone(args.token)
+        self.assertEqual(args.repo_type, "model")
+        self.assertFalse(args.yes)
+
+    def test_tag_create_with_all_options(self) -> None:
+        args = self.parser.parse_args(
+            [
+                "tag",
+                DUMMY_MODEL_ID,
+                "1.0",
+                "--message",
+                "My tag message",
+                "--revision",
+                "v1.0.0",
+                "--token",
+                "my-token",
+                "--repo-type",
+                "dataset",
+                "--yes",
+            ]
+        )
+        self.assertEqual(args.repo_id, DUMMY_MODEL_ID)
+        self.assertEqual(args.tag, "1.0")
+        self.assertEqual(args.message, "My tag message")
+        self.assertEqual(args.revision, "v1.0.0")
+        self.assertEqual(args.token, "my-token")
+        self.assertEqual(args.repo_type, "dataset")
+        self.assertTrue(args.yes)
+
+    def test_tag_list_basic(self) -> None:
+        args = self.parser.parse_args(["tag", "--list", DUMMY_MODEL_ID])
+        self.assertEqual(args.repo_id, DUMMY_MODEL_ID)
+        self.assertIsNone(args.token)
+        self.assertEqual(args.repo_type, "model")
+
+    def test_tag_delete_basic(self) -> None:
+        args = self.parser.parse_args(["tag", "--delete", DUMMY_MODEL_ID, "1.0"])
+        self.assertEqual(args.repo_id, DUMMY_MODEL_ID)
+        self.assertEqual(args.tag, "1.0")
+        self.assertIsNone(args.token)
+        self.assertEqual(args.repo_type, "model")
+        self.assertFalse(args.yes)
 
 
 @contextmanager
@@ -572,3 +636,168 @@ def tmp_current_directory() -> Generator[str, None, None]:
             raise
         finally:
             os.chdir(cwd)
+
+
+class TestRepoFilesCommand(unittest.TestCase):
+    def setUp(self) -> None:
+        """
+        Set up CLI as in `src/huggingface_hub/commands/huggingface_cli.py`.
+        """
+        self.parser = ArgumentParser("huggingface-cli", usage="huggingface-cli <command> [<args>]")
+        commands_parser = self.parser.add_subparsers()
+        RepoFilesCommand.register_subcommand(commands_parser)
+
+    @patch("huggingface_hub.commands.repo_files.HfApi.delete_files")
+    def test_delete(self, delete_files_mock: Mock) -> None:
+        fixtures = [
+            {
+                "input_args": [
+                    "repo-files",
+                    DUMMY_MODEL_ID,
+                    "delete",
+                    "*",
+                ],
+                "delete_files_args": {
+                    "delete_patterns": [
+                        "*",
+                    ],
+                    "repo_id": DUMMY_MODEL_ID,
+                    "repo_type": "model",
+                    "revision": None,
+                    "commit_message": None,
+                    "commit_description": None,
+                    "create_pr": False,
+                },
+            },
+            {
+                "input_args": [
+                    "repo-files",
+                    DUMMY_MODEL_ID,
+                    "delete",
+                    "file.txt",
+                ],
+                "delete_files_args": {
+                    "delete_patterns": [
+                        "file.txt",
+                    ],
+                    "repo_id": DUMMY_MODEL_ID,
+                    "repo_type": "model",
+                    "revision": None,
+                    "commit_message": None,
+                    "commit_description": None,
+                    "create_pr": False,
+                },
+            },
+            {
+                "input_args": [
+                    "repo-files",
+                    DUMMY_MODEL_ID,
+                    "delete",
+                    "folder/",
+                ],
+                "delete_files_args": {
+                    "delete_patterns": [
+                        "folder/",
+                    ],
+                    "repo_id": DUMMY_MODEL_ID,
+                    "repo_type": "model",
+                    "revision": None,
+                    "commit_message": None,
+                    "commit_description": None,
+                    "create_pr": False,
+                },
+            },
+            {
+                "input_args": [
+                    "repo-files",
+                    DUMMY_MODEL_ID,
+                    "delete",
+                    "file1.txt",
+                    "folder/",
+                    "file2.txt",
+                ],
+                "delete_files_args": {
+                    "delete_patterns": [
+                        "file1.txt",
+                        "folder/",
+                        "file2.txt",
+                    ],
+                    "repo_id": DUMMY_MODEL_ID,
+                    "repo_type": "model",
+                    "revision": None,
+                    "commit_message": None,
+                    "commit_description": None,
+                    "create_pr": False,
+                },
+            },
+            {
+                "input_args": [
+                    "repo-files",
+                    DUMMY_MODEL_ID,
+                    "delete",
+                    "file.txt *",
+                    "*.json",
+                    "folder/*.parquet",
+                ],
+                "delete_files_args": {
+                    "delete_patterns": [
+                        "file.txt *",
+                        "*.json",
+                        "folder/*.parquet",
+                    ],
+                    "repo_id": DUMMY_MODEL_ID,
+                    "repo_type": "model",
+                    "revision": None,
+                    "commit_message": None,
+                    "commit_description": None,
+                    "create_pr": False,
+                },
+            },
+            {
+                "input_args": [
+                    "repo-files",
+                    DUMMY_MODEL_ID,
+                    "delete",
+                    "file.txt *",
+                    "--revision",
+                    "test_revision",
+                    "--repo-type",
+                    "dataset",
+                    "--commit-message",
+                    "My commit message",
+                    "--commit-description",
+                    "My commit description",
+                    "--create-pr",
+                ],
+                "delete_files_args": {
+                    "delete_patterns": [
+                        "file.txt *",
+                    ],
+                    "repo_id": DUMMY_MODEL_ID,
+                    "repo_type": "dataset",
+                    "revision": "test_revision",
+                    "commit_message": "My commit message",
+                    "commit_description": "My commit description",
+                    "create_pr": True,
+                },
+            },
+        ]
+
+        for expected in fixtures:
+            # subTest is similar to pytest.mark.parametrize, but using the unittest
+            # framework
+            with self.subTest(expected):
+                delete_files_args = expected["delete_files_args"]
+
+                cmd = DeleteFilesSubCommand(self.parser.parse_args(expected["input_args"]))
+                cmd.run()
+
+                if delete_files_args is None:
+                    assert delete_files_mock.call_count == 0
+                else:
+                    assert delete_files_mock.call_count == 1
+                    # Inspect the captured calls
+                    _, kwargs = delete_files_mock.call_args_list[0]
+                    assert kwargs == delete_files_args
+
+                delete_files_mock.reset_mock()

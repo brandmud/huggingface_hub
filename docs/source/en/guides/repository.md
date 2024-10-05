@@ -61,6 +61,12 @@ When you create a repository, you can set your repository visibility with the `p
 
 If you want to change the repository visibility at a later time, you can use the [`update_repo_visibility`] function.
 
+<Tip>
+
+If you are part of an organization with an Enterprise plan, you can create a repo in a specific resource group by passing `resource_group_id` as parameter to [`create_repo`]. Resource groups are a security feature to control which members from your org can access a given resource. You can get the resource group ID by copying it from your org settings page url on the Hub (e.g. `"https://huggingface.co/organizations/huggingface/settings/resource-groups/66670e5163145ca562cb1988"` => `"66670e5163145ca562cb1988"`). For more details about resource group, check out this [guide](https://huggingface.co/docs/hub/en/security-resource-groups).
+
+</Tip>
+
 ### Delete a repository
 
 Delete a repository with [`delete_repo`]. Make sure you want to delete a repository because this is an irreversible process!
@@ -145,8 +151,21 @@ Some settings are specific to Spaces (hardware, environment variables,...). To c
 A repository can be public or private. A private repository is only visible to you or members of the organization in which the repository is located. Change a repository to private as shown in the following:
 
 ```py
->>> from huggingface_hub import update_repo_visibility
->>> update_repo_visibility(repo_id=repo_id, private=True)
+>>> from huggingface_hub import update_repo_settings
+>>> update_repo_settings(repo_id=repo_id, private=True)
+```
+
+### Setup gated access
+
+To give more control over how repos are used, the Hub allows repo authors to enable **access requests** for their repos. User must agree to share their contact information (username and email address) with the repo authors to access the files when enabled. A repo with access requests enabled is called a **gated repo**.
+
+You can set a repo as gated using [`update_repo_settings`]:
+
+```py
+>>> from huggingface_hub import HfApi
+
+>>> api = HfApi()
+>>> api.update_repo_settings(repo_id=repo_id, gated="auto")  # Set automatic gating for a model
 ```
 
 ### Rename your repository

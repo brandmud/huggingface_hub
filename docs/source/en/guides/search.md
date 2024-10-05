@@ -30,21 +30,13 @@ The list helpers have several attributes like:
 - `search`
 - ...
 
-Two of these parameters are intuitive (`author` and `search`), but what about that `filter`?
-`filter` takes as input a [`ModelFilter`] object (or [`DatasetFilter`]). You can instantiate
-it by specifying which models you want to filter.
-
-Let's see an example to get all models on the Hub that does image classification, have been
-trained on the imagenet dataset and that runs with PyTorch. That can be done with a single
-[`ModelFilter`]. Attributes are combined as "logical AND".
+Let's see an example to get all models on the Hub that does image classification, have been trained on the imagenet dataset and that runs with PyTorch.
 
 ```py
 models = hf_api.list_models(
-    filter=ModelFilter(
-		task="image-classification",
-		library="pytorch",
-		trained_dataset="imagenet"
-	)
+	task="image-classification",
+	library="pytorch",
+	trained_dataset="imagenet",
 )
 ```
 
@@ -65,5 +57,5 @@ the following example fetches the top 5 most downloaded datasets on the Hub:
 
 
 
-To explore available filter on the Hub, visit [models](https://huggingface.co/models) and [datasets](https://huggingface.co/datasets) pages
+To explore available filters on the Hub, visit [models](https://huggingface.co/models) and [datasets](https://huggingface.co/datasets) pages
 in your browser, search for some parameters and look at the values in the URL.

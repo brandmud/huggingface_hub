@@ -65,6 +65,15 @@ def generate_async_client_code(code: str) -> str:
     # Adapt list_deployed_models
     code = _adapt_list_deployed_models(code)
 
+    # Adapt /info and /health endpoints
+    code = _adapt_info_and_health_endpoints(code)
+
+    # Add _get_client_session
+    code = _add_get_client_session(code)
+
+    # Adapt the proxy client (for client.chat.completions.create)
+    code = _adapt_proxy_client(code)
+
     return code
 
 
@@ -74,7 +83,7 @@ def format_source_code(code: str) -> str:
         filepath = Path(tmpdir) / "async_client.py"
         filepath.write_text(code)
         ruff_bin = find_ruff_bin()
-        os.spawnv(os.P_WAIT, ruff_bin, ["ruff", str(filepath), "--fix", "--quiet"])
+        os.spawnv(os.P_WAIT, ruff_bin, ["ruff", "check", str(filepath), "--fix", "--quiet"])
         os.spawnv(os.P_WAIT, ruff_bin, ["ruff", "format", str(filepath), "--quiet"])
         return filepath.read_text()
 
@@ -148,6 +157,7 @@ def _add_imports(code: str) -> str:
             r"\1"
             + "from .._common import _async_yield_from, _import_aiohttp\n"
             + "from typing import AsyncIterable\n"
+            + "from typing import Set\n"
             + "import asyncio\n"
         ),
         string=code,
@@ -180,7 +190,7 @@ ASYNC_POST_CODE = """
             warnings.warn("Ignoring `json` as `data` is passed as binary.")
 
         # Set Accept header if relevant
-        headers = self.headers.copy()
+        headers = dict()
         if task in TASKS_EXPECTING_IMAGES and "Accept" not in headers:
             headers["Accept"] = "image/png"
 
@@ -190,12 +200,10 @@ ASYNC_POST_CODE = """
             with _open_as_binary(data) as data_as_binary:
                 # Do not use context manager as we don't want to close the connection immediately when returning
                 # a stream
-                client = aiohttp.ClientSession(
-                    headers=headers, cookies=self.cookies, timeout=aiohttp.ClientTimeout(self.timeout)
-                )
+                session = self._get_client_session(headers=headers)
 
                 try:
-                    response = await client.post(url, json=json, data=data_as_binary)
+                    response = await session.post(url, json=json, data=data_as_binary, proxy=self.proxies)
                     response_error_payload = None
                     if response.status != 200:
                         try:
@@ -204,18 +212,18 @@ ASYNC_POST_CODE = """
                             pass
                     response.raise_for_status()
                     if stream:
-                        return _async_yield_from(client, response)
+                        return _async_yield_from(session, response)
                     else:
                         content = await response.read()
-                        await client.close()
+                        await session.close()
                         return content
                 except asyncio.TimeoutError as error:
-                    await client.close()
+                    await session.close()
                     # Convert any `TimeoutError` to a `InferenceTimeoutError`
                     raise InferenceTimeoutError(f"Inference call timed out: {url}") from error  # type: ignore
                 except aiohttp.ClientResponseError as error:
                     error.response_error_payload = response_error_payload
-                    await client.close()
+                    await session.close()
                     if response.status == 422 and task is not None:
                         error.message += f". Make sure '{task}' task is supported by the model."
                     if response.status == 503:
@@ -229,11 +237,42 @@ ASYNC_POST_CODE = """
                             ) from error
                         # ...or wait 1s and retry
                         logger.info(f"Waiting for model to be loaded on the server: {error}")
+                        if "X-wait-for-model" not in headers and url.startswith(INFERENCE_ENDPOINT):
+                            headers["X-wait-for-model"] = "1"
                         time.sleep(1)
                         if timeout is not None:
                             timeout = max(self.timeout - (time.time() - t0), 1)  # type: ignore
                         continue
-                    raise error"""
+                    raise error
+                except Exception:
+                    await session.close()
+                    raise
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self.close()
+
+    def __del__(self):
+        if len(self._sessions) > 0:
+            warnings.warn(
+                "Deleting 'AsyncInferenceClient' client but some sessions are still open. "
+                "This can happen if you've stopped streaming data from the server before the stream was complete. "
+                "To close the client properly, you must call `await client.close()` "
+                "or use an async context (e.g. `async with AsyncInferenceClient(): ...`."
+            )
+
+    async def close(self):
+        \"""Close all open sessions.
+
+        By default, 'aiohttp.ClientSession' objects are closed automatically when a call is completed. However, if you
+        are streaming data from the server and you stop before the stream is complete, you must call this method to
+        close the session properly.
+
+        Another possibility is to use an async context (e.g. `async with AsyncInferenceClient(): ...`).
+        \"""
+        await asyncio.gather(*[session.close() for session in self._sessions.keys()])"""
 
 
 def _make_post_async(code: str) -> str:
@@ -287,12 +326,13 @@ def _adapt_text_generation_to_async(code: str) -> str:
     code = code.replace(
         """
         except HTTPError as e:
-            if isinstance(e, BadRequestError) and "The following `model_kwargs` are not used by the model" in str(e):
+            match = MODEL_KWARGS_NOT_USED_REGEX.search(str(e))
+            if isinstance(e, BadRequestError) and match:
     """,
         """
         except _import_aiohttp().ClientResponseError as e:
-            error_message = getattr(e, "response_error_payload", {}).get("error", "")
-            if e.code == 400 and "The following `model_kwargs` are not used by the model" in error_message:
+            match = MODEL_KWARGS_NOT_USED_REGEX.search(e.response_error_payload["error"])
+            if e.status == 400 and match:
     """,
     )
 
@@ -332,12 +372,6 @@ def _adapt_text_generation_to_async(code: str) -> str:
 
 
 def _adapt_chat_completion_to_async(code: str) -> str:
-    # Catch `aiohttp` error instead of `requests` error
-    code = code.replace(
-        "except HTTPError:",
-        "except _import_aiohttp().ClientResponseError:",
-    )
-
     # Await text-generation call
     code = code.replace(
         "text_generation_output = self.text_generation(",
@@ -366,7 +400,7 @@ def _update_example_code_block(code_block: str) -> str:
     code_block = "\n        # Must be run in an async context" + code_block
     code_block = code_block.replace("InferenceClient", "AsyncInferenceClient")
     code_block = code_block.replace("client.", "await client.")
-    code_block = code_block.replace(" for ", " async for ")
+    code_block = code_block.replace(">>> for ", ">>> async for ")
     return code_block
 
 
@@ -374,7 +408,7 @@ def _update_examples_in_public_methods(code: str) -> str:
     for match in re.finditer(
         r"""
         \n\s*
-        Example:\n\s* # example section
+        Example.*?:\n\s* # example section
         ```py # start
         (.*?) # code block
         ``` # end
@@ -403,13 +437,7 @@ def _use_async_streaming_util(code: str) -> str:
         "_stream_text_generation_response",
         "_async_stream_text_generation_response",
     )
-    code = code.replace(
-        "_stream_chat_completion_response_from_text_generation",
-        "_async_stream_chat_completion_response_from_text_generation",
-    )
-    code = code.replace(
-        "_stream_chat_completion_response_from_bytes", "_async_stream_chat_completion_response_from_bytes"
-    )
+    code = code.replace("_stream_chat_completion_response", "_async_stream_chat_completion_response")
     return code
 
 
@@ -420,8 +448,8 @@ def _adapt_get_model_status(code: str) -> str:
         response_data = response.json()"""
 
     async_snippet = """
-        async with _import_aiohttp().ClientSession(headers=self.headers) as client:
-            response = await client.get(url)
+        async with self._get_client_session() as client:
+            response = await client.get(url, proxy=self.proxies)
             response.raise_for_status()
             response_data = await response.json()"""
 
@@ -437,8 +465,8 @@ def _adapt_list_deployed_models(code: str) -> str:
 
     async_snippet = """
         async def _fetch_framework(framework: str) -> None:
-            async with _import_aiohttp().ClientSession(headers=self.headers) as client:
-                response = await client.get(f"{INFERENCE_ENDPOINT}/framework/{framework}")
+            async with self._get_client_session() as client:
+                response = await client.get(f"{INFERENCE_ENDPOINT}/framework/{framework}", proxy=self.proxies)
                 response.raise_for_status()
                 _unpack_response(framework, await response.json())
 
@@ -447,6 +475,117 @@ def _adapt_list_deployed_models(code: str) -> str:
         await asyncio.gather(*[_fetch_framework(framework) for framework in frameworks])""".strip()
 
     return code.replace(sync_snippet, async_snippet)
+
+
+def _adapt_info_and_health_endpoints(code: str) -> str:
+    info_sync_snippet = """
+        response = get_session().get(url, headers=self.headers)
+        hf_raise_for_status(response)
+        return response.json()"""
+
+    info_async_snippet = """
+        async with self._get_client_session() as client:
+            response = await client.get(url, proxy=self.proxies)
+            response.raise_for_status()
+            return await response.json()"""
+
+    code = code.replace(info_sync_snippet, info_async_snippet)
+
+    health_sync_snippet = """
+        response = get_session().get(url, headers=self.headers)
+        return response.status_code == 200"""
+
+    health_async_snippet = """
+        async with self._get_client_session() as client:
+            response = await client.get(url, proxy=self.proxies)
+            return response.status == 200"""
+
+    return code.replace(health_sync_snippet, health_async_snippet)
+
+
+def _add_get_client_session(code: str) -> str:
+    # Add trust_env as parameter
+    code = _add_before(code, "proxies: Optional[Any] = None,", "trust_env: bool = False,")
+    code = _add_before(code, "\n        self.proxies = proxies\n", "\n        self.trust_env = trust_env")
+
+    # Document `trust_env` parameter
+    code = _add_before(
+        code,
+        "\n        proxies (`Any`, `optional`):",
+        """
+        trust_env ('bool', 'optional'):
+            Trust environment settings for proxy configuration if the parameter is `True` (`False` by default).""",
+    )
+
+    # insert `_get_client_session` before `_resolve_url` method
+    client_session_code = """
+
+    def _get_client_session(self, headers: Optional[Dict] = None) -> "ClientSession":
+        aiohttp = _import_aiohttp()
+        client_headers = self.headers.copy()
+        if headers is not None:
+            client_headers.update(headers)
+
+        # Return a new aiohttp ClientSession with correct settings.
+        session = aiohttp.ClientSession(
+            headers=client_headers,
+            cookies=self.cookies,
+            timeout=aiohttp.ClientTimeout(self.timeout),
+            trust_env=self.trust_env,
+        )
+
+        # Keep track of sessions to close them later
+        self._sessions[session] = set()
+
+        # Override the `._request` method to register responses to be closed
+        session._wrapped_request = session._request
+
+        async def _request(method, url, **kwargs):
+            response = await session._wrapped_request(method, url, **kwargs)
+            self._sessions[session].add(response)
+            return response
+
+        session._request = _request
+
+        # Override the 'close' method to
+        # 1. close ongoing responses
+        # 2. deregister the session when closed
+        session._close = session.close
+
+        async def close_session():
+            for response in self._sessions[session]:
+                response.close()
+            await session._close()
+            self._sessions.pop(session, None)
+
+        session.close = close_session
+        return session
+
+"""
+    code = _add_before(code, "\n    def _resolve_url(", client_session_code)
+
+    # Add self._sessions attribute in __init__
+    code = _add_before(
+        code,
+        "\n    def __repr__(self):\n",
+        "\n        # Keep track of the sessions to close them properly"
+        "\n        self._sessions: Dict['ClientSession', Set['ClientResponse']] = dict()",
+    )
+
+    return code
+
+
+def _adapt_proxy_client(code: str) -> str:
+    return code.replace(
+        "def __init__(self, client: InferenceClient):",
+        "def __init__(self, client: AsyncInferenceClient):",
+    )
+
+
+def _add_before(code: str, pattern: str, addition: str) -> str:
+    index = code.find(pattern)
+    assert index != -1, f"Pattern '{pattern}' not found in code."
+    return code[:index] + addition + code[index:]
 
 
 if __name__ == "__main__":

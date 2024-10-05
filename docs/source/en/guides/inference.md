@@ -38,13 +38,47 @@ Let's get started with a text-to-image task:
 >>> client = InferenceClient()
 
 >>> image = client.text_to_image("An astronaut riding a horse on the moon.")
->>> image.save("astronaut.png")
+>>> image.save("astronaut.png")  # 'image' is a PIL.Image object
 ```
 
-We initialized an [`InferenceClient`] with the default parameters. The only thing you need to know is the [task](#supported-tasks) you want
-to perform. By default, the client will connect to the Inference API and select a model to complete the task. In our
-example, we generated an image from a text prompt. The returned value is a `PIL.Image` object that can be saved to a
-file.
+In the example above, we initialized an [`InferenceClient`] with the default parameters. The only thing you need to know is the [task](#supported-tasks) you want to perform. By default, the client will connect to the Inference API and select a model to complete the task. In our example, we generated an image from a text prompt. The returned value is a `PIL.Image` object that can be saved to a file. For more details, check out the [`~InferenceClient.text_to_image`] documentation.
+
+Let's now see an example using the [~`InferenceClient.chat_completion`] API. This task uses an LLM to generate a response from a list of messages:
+
+```python
+>>> from huggingface_hub import InferenceClient
+>>> messages = [{"role": "user", "content": "What is the capital of France?"}]
+>>> client = InferenceClient("meta-llama/Meta-Llama-3-8B-Instruct")
+>>> client.chat_completion(messages, max_tokens=100)
+ChatCompletionOutput(
+    choices=[
+        ChatCompletionOutputComplete(
+            finish_reason='eos_token',
+            index=0,
+            message=ChatCompletionOutputMessage(
+                role='assistant',
+                content='The capital of France is Paris.',
+                name=None,
+                tool_calls=None
+            ),
+            logprobs=None
+        )
+    ],
+    created=1719907176,
+    id='',
+    model='meta-llama/Meta-Llama-3-8B-Instruct',
+    object='text_completion',
+    system_fingerprint='2.0.4-sha-f426a33',
+    usage=ChatCompletionOutputUsage(
+        completion_tokens=8,
+        prompt_tokens=17,
+        total_tokens=25
+    )
+)
+```
+
+In this example, we specified which model we want to use (`"meta-llama/Meta-Llama-3-8B-Instruct"`). You can find a list of compatible models [on this page](https://huggingface.co/models?other=conversational&sort=likes). We then gave a list of messages to complete (here, a single question) and passed an additional parameter to API (`max_token=100`). The output is a `ChatCompletionOutput` object that follows the OpenAI specification. The generated content can be access with `output.choices[0].message.content`. For more details, check out the [`~InferenceClient.chat_completion`] documentation.
+
 
 <Tip warning={true}>
 
@@ -113,6 +147,70 @@ endpoints.
 
 </Tip>
 
+## OpenAI compatibility
+
+The `chat_completion` task follows [OpenAI's Python client](https://github.com/openai/openai-python) syntax. What does it mean for you? It means that if you are used to play with `OpenAI`'s APIs you will be able to switch to `huggingface_hub.InferenceClient` to work with open-source models by updating just 2 line of code!
+
+```diff
+- from openai import OpenAI
++ from huggingface_hub import InferenceClient
+
+- client = OpenAI(
++ client = InferenceClient(
+    base_url=...,
+    api_key=...,
+)
+
+
+output = client.chat.completions.create(
+    model="meta-llama/Meta-Llama-3-8B-Instruct",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Count to 10"},
+    ],
+    stream=True,
+    max_tokens=1024,
+)
+
+for chunk in output:
+    print(chunk.choices[0].delta.content)
+```
+
+And that's it! The only required changes are to replace `from openai import OpenAI` by `from huggingface_hub import InferenceClient` and `client = OpenAI(...)` by `client = InferenceClient(...)`. You can chose any LLM model from the Hugging Face Hub by passing its model id as `model` parameter. [Here is a list](https://huggingface.co/models?pipeline_tag=text-generation&other=conversational,text-generation-inference&sort=trending) of supported models. For authentication, you should pass a valid [User Access Token](https://huggingface.co/settings/tokens) as `api_key` or authenticate using `huggingface_hub` (see the [authentication guide](https://huggingface.co/docs/huggingface_hub/quick-start#authentication)).
+
+All input parameters and output format are strictly the same. In particular, you can pass `stream=True` to receive tokens as they are generated. You can also use the [`AsyncInferenceClient`] to run inference using `asyncio`:
+
+```diff
+import asyncio
+- from openai import AsyncOpenAI
++ from huggingface_hub import AsyncInferenceClient
+
+- client = AsyncOpenAI()
++ client = AsyncInferenceClient()
+
+async def main():
+    stream = await client.chat.completions.create(
+        model="meta-llama/Meta-Llama-3-8B-Instruct",
+        messages=[{"role": "user", "content": "Say this is a test"}],
+        stream=True,
+    )
+    async for chunk in stream:
+        print(chunk.choices[0].delta.content or "", end="")
+
+asyncio.run(main())
+```
+
+You might wonder why using [`InferenceClient`] instead of OpenAI's client? There are a few reasons for that:
+1. [`InferenceClient`] is configured for Hugging Face services. You don't need to provide a `base_url` to run models on the serverless Inference API. You also don't need to provide a `token` or `api_key` if you machine is already correctly logged in.
+2. [`InferenceClient`] is tailored for both Text-Generation-Inference (TGI) and `transformers` frameworks, meaning you are assured it will always be on-par with the latest updates.
+3. [`InferenceClient`] is integrated with our Inference Endpoints service, making it easier to launch an Inference Endpoint, check its status and run inference on it. Check out the [Inference Endpoints](./inference_endpoints.md) guide for more details.
+
+<Tip>
+
+`InferenceClient.chat.completions.create` is simply an alias for `InferenceClient.chat_completion`. Check out the package reference of [`~InferenceClient.chat_completion`] for more details. `base_url` and `api_key` parameters when instantiating the client are also aliases for `model` and `token`. These aliases have been defined to reduce friction when switching from `OpenAI` to `InferenceClient`.
+
+</Tip>
+
 ## Supported tasks
 
 [`InferenceClient`]'s goal is to provide the easiest interface to run inference on Hugging Face models. It
@@ -133,7 +231,8 @@ has a simple API that supports the most common tasks. Here is a list of the curr
 | | [Zero-Shot-Image-Classification](https://huggingface.co/tasks/zero-shot-image-classification)                  | ✅ | [`~InferenceClient.zero_shot_image_classification`] |
 | Multimodal | [Documentation Question Answering](https://huggingface.co/tasks/document-question-answering) | ✅ | [`~InferenceClient.document_question_answering`]
 | | [Visual Question Answering](https://huggingface.co/tasks/visual-question-answering)      | ✅ | [`~InferenceClient.visual_question_answering`] |
-| NLP | [Conversational](https://huggingface.co/tasks/conversational)                 | ✅ | [`~InferenceClient.conversational`] |
+| NLP | Conversational                 |   | *deprecated*, use Chat Completion |
+| | [Chat Completion](https://huggingface.co/tasks/text-generation)             | ✅ | [`~InferenceClient.chat_completion`] |
 | | [Feature Extraction](https://huggingface.co/tasks/feature-extraction)             | ✅ | [`~InferenceClient.feature_extraction`] |
 | | [Fill Mask](https://huggingface.co/tasks/fill-mask)                      | ✅ | [`~InferenceClient.fill_mask`] |
 | | [Question Answering](https://huggingface.co/tasks/question-answering)             | ✅ | [`~InferenceClient.question_answering`]

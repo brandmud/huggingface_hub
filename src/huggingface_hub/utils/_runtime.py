@@ -15,6 +15,7 @@
 """Check presence of installed packages at runtime."""
 
 import importlib.metadata
+import os
 import platform
 import sys
 import warnings
@@ -30,6 +31,7 @@ _package_versions = {}
 _CANDIDATES = {
     "aiohttp": {"aiohttp"},
     "fastai": {"fastai"},
+    "fastapi": {"fastapi"},
     "fastcore": {"fastcore"},
     "gradio": {"gradio"},
     "graphviz": {"graphviz"},
@@ -103,6 +105,15 @@ def is_fastai_available() -> bool:
 
 def get_fastai_version() -> str:
     return _get_version("fastai")
+
+
+# FastAPI
+def is_fastapi_available() -> bool:
+    return is_package_available("fastapi")
+
+
+def get_fastapi_version() -> str:
+    return _get_version("fastapi")
 
 
 # Fastcore
@@ -292,6 +303,11 @@ def is_google_colab() -> bool:
     return _is_google_colab
 
 
+def is_colab_enterprise() -> bool:
+    """Return `True` if code is executed in a Google Colab Enterprise environment."""
+    return os.environ.get("VERTEX_PRODUCT") == "COLAB_ENTERPRISE"
+
+
 def dump_environment_info() -> Dict[str, Any]:
     """Dump information about the machine to help debugging issues.
 
@@ -321,7 +337,7 @@ def dump_environment_info() -> Dict[str, Any]:
         info["Running in iPython ?"] = "No"
     info["Running in notebook ?"] = "Yes" if is_notebook() else "No"
     info["Running in Google Colab ?"] = "Yes" if is_google_colab() else "No"
-
+    info["Running in Google Colab Enterprise ?"] = "Yes" if is_colab_enterprise() else "No"
     # Login info
     info["Token path ?"] = constants.HF_TOKEN_PATH
     info["Has saved token ?"] = token is not None
@@ -357,6 +373,7 @@ def dump_environment_info() -> Dict[str, Any]:
     info["HF_HUB_CACHE"] = constants.HF_HUB_CACHE
     info["HF_ASSETS_CACHE"] = constants.HF_ASSETS_CACHE
     info["HF_TOKEN_PATH"] = constants.HF_TOKEN_PATH
+    info["HF_STORED_TOKENS_PATH"] = constants.HF_STORED_TOKENS_PATH
     info["HF_HUB_OFFLINE"] = constants.HF_HUB_OFFLINE
     info["HF_HUB_DISABLE_TELEMETRY"] = constants.HF_HUB_DISABLE_TELEMETRY
     info["HF_HUB_DISABLE_PROGRESS_BARS"] = constants.HF_HUB_DISABLE_PROGRESS_BARS

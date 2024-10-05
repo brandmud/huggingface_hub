@@ -25,6 +25,7 @@ work as well.
 
 import asyncio
 import inspect
+from unittest.mock import Mock, patch
 
 import pytest
 from aiohttp import ClientResponseError
@@ -33,15 +34,16 @@ import huggingface_hub.inference._common
 from huggingface_hub import (
     AsyncInferenceClient,
     ChatCompletionOutput,
-    ChatCompletionOutputChoice,
-    ChatCompletionOutputChoiceMessage,
+    ChatCompletionOutputComplete,
+    ChatCompletionOutputMessage,
+    ChatCompletionOutputUsage,
     ChatCompletionStreamOutput,
     InferenceClient,
     InferenceTimeoutError,
-    TextGenerationPrefillToken,
+    TextGenerationOutputPrefillToken,
 )
 from huggingface_hub.inference._common import ValidationError as TextGenerationValidationError
-from huggingface_hub.inference._common import _is_tgi_server
+from huggingface_hub.inference._common import _get_unsupported_text_generation_kwargs
 
 from .test_inference_client import CHAT_COMPLETE_NON_TGI_MODEL, CHAT_COMPLETION_MESSAGES, CHAT_COMPLETION_MODEL
 from .testing_utils import with_production_testing
@@ -49,7 +51,7 @@ from .testing_utils import with_production_testing
 
 @pytest.fixture(autouse=True)
 def patch_non_tgi_server(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(huggingface_hub.inference._common, "_NON_TGI_SERVERS", set())
+    monkeypatch.setattr(huggingface_hub.inference._common, "_UNSUPPORTED_TEXT_GENERATION_KWARGS", {})
 
 
 @pytest.fixture
@@ -74,7 +76,7 @@ async def test_async_generate_with_details(tgi_client: AsyncInferenceClient) -> 
     assert response.details.generated_tokens == 1
     assert response.details.seed is None
     assert len(response.details.prefill) == 1
-    assert response.details.prefill[0] == TextGenerationPrefillToken(id=0, text="<pad>", logprob=None)
+    assert response.details.prefill[0] == TextGenerationOutputPrefillToken(id=0, text="<pad>", logprob=None)
     assert len(response.details.tokens) == 1
     assert response.details.tokens[0].id == 3
     assert response.details.tokens[0].text == " "
@@ -106,7 +108,7 @@ async def test_async_generate_validation_error(tgi_client: AsyncInferenceClient)
 async def test_async_generate_non_tgi_endpoint(tgi_client: AsyncInferenceClient) -> None:
     text = await tgi_client.text_generation("0 1 2", model="gpt2", max_new_tokens=10)
     assert text == " 3 4 5 6 7 8 9 10 11 12"
-    assert not _is_tgi_server("gpt2")
+    assert _get_unsupported_text_generation_kwargs("gpt2") == ["details", "stop", "watermark", "decoder_input_details"]
 
     # Watermark is ignored (+ warning)
     with pytest.warns(UserWarning):
@@ -160,11 +162,15 @@ async def test_async_chat_completion_no_stream() -> None:
     output = await async_client.chat_completion(CHAT_COMPLETION_MESSAGES, max_tokens=10)
     assert isinstance(output.created, int)
     assert output == ChatCompletionOutput(
+        id="",
+        model="HuggingFaceH4/zephyr-7b-beta",
+        system_fingerprint="1.4.3-sha-e6bb3ff",
+        usage=ChatCompletionOutputUsage(completion_tokens=10, prompt_tokens=47, total_tokens=57),
         choices=[
-            ChatCompletionOutputChoice(
+            ChatCompletionOutputComplete(
                 finish_reason="length",
                 index=0,
-                message=ChatCompletionOutputChoiceMessage(
+                message=ChatCompletionOutputMessage(
                     content="Deep learning is a subfield of machine learning that",
                     role="assistant",
                 ),
@@ -183,16 +189,18 @@ async def test_async_chat_completion_not_tgi_no_stream() -> None:
     assert isinstance(output.created, int)
     assert output == ChatCompletionOutput(
         choices=[
-            ChatCompletionOutputChoice(
-                finish_reason="unk",  # Non-TGI => cannot know the finish reason
+            ChatCompletionOutputComplete(
+                finish_reason="eos_token",
                 index=0,
-                message=ChatCompletionOutputChoiceMessage(
-                    content="Deep learning is a thing.",
-                    role="assistant",
-                ),
+                message=ChatCompletionOutputMessage(role="assistant", content="Hello, advisor.", tool_calls=None),
+                logprobs=None,
             )
         ],
-        created=output.created,
+        created=1721741143,
+        id="",
+        model="microsoft/DialoGPT-small",
+        system_fingerprint="2.1.1-sha-4dfdb48",
+        usage=ChatCompletionOutputUsage(completion_tokens=5, prompt_tokens=13, total_tokens=18),
     )
 
 
@@ -204,18 +212,16 @@ async def test_async_chat_completion_with_stream() -> None:
 
     all_items = [item async for item in output]
     generated_text = ""
-    for item in all_items[:-1]:  # all but last item
+    for item in all_items:
         assert isinstance(item, ChatCompletionStreamOutput)
         assert len(item.choices) == 1
         generated_text += item.choices[0].delta.content
     last_item = all_items[-1]
 
-    assert generated_text == "Deep Learning is a subfield of Machine Learning that"
+    assert generated_text == "Deep learning is a subfield of machine learning that"
 
-    # Last item has a finish reason but no role/content delta
+    # Last item has a finish reason
     assert last_item.choices[0].finish_reason == "length"
-    assert last_item.choices[0].delta.role is None
-    assert last_item.choices[0].delta.content is None
 
 
 @pytest.mark.vcr
@@ -332,10 +338,143 @@ async def test_async_generate_timeout_error(monkeypatch: pytest.MonkeyPatch) -> 
         await AsyncInferenceClient(timeout=1).text_generation("test")
 
 
+class CustomException(Exception):
+    """Mock any exception that could happen while making a POST request."""
+
+
+@patch("aiohttp.ClientSession.post", side_effect=CustomException())
+@patch("aiohttp.ClientSession.close")
+@pytest.mark.asyncio
+async def test_close_connection_on_post_error(mock_close: Mock, mock_post: Mock) -> None:
+    async_client = AsyncInferenceClient()
+
+    with pytest.raises(CustomException):
+        await async_client.post(model="http://127.0.0.1/api", json={})
+
+    mock_close.assert_called_once()
+
+
 @pytest.mark.vcr
 @pytest.mark.asyncio
-async def test_unprocessable_entity_error() -> None:
-    with pytest.raises(ClientResponseError) as error:
-        with pytest.warns(FutureWarning, match=".*'InferenceClient.conversational'.*"):
-            await AsyncInferenceClient().conversational("Hi, who are you?", model="HuggingFaceH4/zephyr-7b-alpha")
-    assert "Make sure 'conversational' task is supported by the model." in error.value.message
+@with_production_testing
+async def test_openai_compatibility_base_url_and_api_key():
+    client = AsyncInferenceClient(
+        base_url="https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct",
+        api_key="my-api-key",
+    )
+    output = await client.chat.completions.create(
+        model="meta-llama/Meta-Llama-3-8B-Instruct",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Count to 10"},
+        ],
+        stream=False,
+        max_tokens=1024,
+    )
+    assert output.choices[0].message.content == "1, 2, 3, 4, 5, 6, 7, 8, 9, 10!"
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+@with_production_testing
+async def test_openai_compatibility_without_base_url():
+    client = AsyncInferenceClient()
+    output = await client.chat.completions.create(
+        model="meta-llama/Meta-Llama-3-8B-Instruct",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Count to 10"},
+        ],
+        stream=False,
+        max_tokens=1024,
+    )
+    assert output.choices[0].message.content == "1, 2, 3, 4, 5, 6, 7, 8, 9, 10!"
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+@with_production_testing
+async def test_openai_compatibility_with_stream_true():
+    client = AsyncInferenceClient()
+    output = await client.chat.completions.create(
+        model="meta-llama/Meta-Llama-3-8B-Instruct",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Count to 10"},
+        ],
+        stream=True,
+        max_tokens=1024,
+    )
+
+    chunked_text = [chunk.choices[0].delta.content async for chunk in output]
+    assert len(chunked_text) == 34
+    assert "".join(chunked_text) == "Here it goes:\n\n1, 2, 3, 4, 5, 6, 7, 8, 9, 10!"
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+@with_production_testing
+async def test_http_session_correctly_closed() -> None:
+    """
+    Regression test for #2493.
+    Async client should close the HTTP session after the request is done.
+    This is always done except for streamed responses if the stream is not fully consumed.
+    Fixed by keeping a list of sessions and closing them all when deleting the client.
+
+    See https://github.com/huggingface/huggingface_hub/issues/2493.
+    """
+
+    client = AsyncInferenceClient("meta-llama/Meta-Llama-3.1-8B-Instruct")
+    kwargs = {"prompt": "Hi", "stream": True, "max_new_tokens": 1}
+
+    # Test create session + close it + check correctly unregistered
+    await client.text_generation(**kwargs)
+    assert len(client._sessions) == 1
+    await list(client._sessions)[0].close()
+    assert len(client._sessions) == 0
+
+    # Test create multiple sessions + close AsyncInferenceClient + check correctly unregistered
+    await client.text_generation(**kwargs)
+    await client.text_generation(**kwargs)
+    await client.text_generation(**kwargs)
+
+    assert len(client._sessions) == 3
+    await client.close()
+    assert len(client._sessions) == 0
+
+
+@pytest.mark.asyncio
+async def test_use_async_with_inference_client():
+    with patch("huggingface_hub.AsyncInferenceClient.close") as mock_close:
+        async with AsyncInferenceClient():
+            pass
+    mock_close.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession._request")
+async def test_client_responses_correctly_closed(request_mock: Mock) -> None:
+    """
+    Regression test for #2521.
+    Async client must close the ClientResponse objects when exiting the async context manager.
+    Fixed by closing the response objects when the session is closed.
+
+    See https://github.com/huggingface/huggingface_hub/issues/2521.
+    """
+    async with AsyncInferenceClient() as client:
+        session = client._get_client_session()
+        response1 = await session.get("http://this-is-a-fake-url.com")
+        response2 = await session.post("http://this-is-a-fake-url.com", json={})
+
+    # Response objects are closed when the AsyncInferenceClient is closed
+    response1.close.assert_called_once()
+    response2.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_warns_if_client_deleted_with_opened_sessions():
+    client = AsyncInferenceClient()
+    session = client._get_client_session()
+    with pytest.warns(UserWarning):
+        client.__del__()
+    await session.close()
